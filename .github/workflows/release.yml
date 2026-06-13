@@ -1,0 +1,62 @@
+name: Release
+
+# Publishes the packages to npm via Changesets.
+#
+# ──────────────────────────────────────────────────────────────────────────
+# NOT YET ACTIVE. To turn this on once the packages are ready to publish:
+#   1. Add an npm automation token as the `NPM_TOKEN` repository secret.
+#   2. Set the `ENABLE_RELEASE` repository variable to "true".
+#      (Settings → Secrets and variables → Actions → Variables)
+# Until then the job is skipped, so nothing publishes prematurely.
+#
+# How it works once active:
+#   - A push to main with pending changesets opens a "Version Packages" PR
+#     that bumps versions and updates changelogs.
+#   - Merging that PR runs `pnpm release` (build + `changeset publish`),
+#     publishing every package whose version isn't on npm yet.
+# ──────────────────────────────────────────────────────────────────────────
+
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  group: release-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Version or publish
+    if: vars.ENABLE_RELEASE == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # create the version PR / push tags
+      pull-requests: write # open the "Version Packages" PR
+      id-token: write # npm provenance
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          registry-url: https://registry.npmjs.org
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Create release PR or publish to npm
+        uses: changesets/action@v1
+        with:
+          version: pnpm version-packages
+          publish: pnpm release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NPM_CONFIG_PROVENANCE: "true"
