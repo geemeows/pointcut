@@ -1,20 +1,23 @@
 /* eslint-disable */
 // Design Toolbar — color picker model (0005; see ../design-toolbar-plugin.js).
 //
-// Color is where vocabulary matters (D5). Designers think in the L1 primitive
-// ramp — the Figma mental model — so the control shows raw --color-* swatches
-// (0001). But shipping a primitive at the usage site would break dark mode: the
-// edit must land on a *semantic* role (--surface-* / --text-* / --border-* /
-// --icon-*). So this model captures intent as "the element's <current role>
-// should move toward <picked primitive>" and the agent swaps to the semantic
-// token whose value matches. The current role is read from where the property
-// is actually defined (provenance, 0002) — roleOf() extracts it from the
-// declared value. No role applying is itself signal (D4/D8): the intent is
-// flagged as possibly needing a new semantic token rather than silently
-// writing a hex. Pure model: it picks among tokens and assembles the 0003
-// `edit` record but never touches the DOM — the caller (client.js) reads the
-// computed color, paints the throwaway inline preview, and reads provenance.
-// `tokens` is the only dependency, injected for testing.
+// Color is where vocabulary matters (D5). Designers think in a primitive ramp —
+// the Figma mental model — so the control shows the project's raw color swatches
+// (the color ramp introspected in 0001). But shipping a primitive at the usage
+// site can break theming (dark mode): the edit should land on the *semantic*
+// token the element already references, not a raw value. So this model captures
+// intent as "the element's <current role> should move toward <picked primitive>"
+// and the agent swaps to the semantic token whose value matches. The current
+// role is read from where the property is actually defined (provenance, 0002) —
+// roleOf() extracts whichever `var(--token)` the declared value references,
+// design-system-agnostically (no hardcoded role-name vocabulary, ADR 0001). A
+// reference that resolves to a swatch in the primitive ramp is treated as a raw
+// primitive, not a role. No role applying is itself signal (D4/D8): the intent is
+// flagged as possibly needing a semantic token rather than silently writing a
+// hex. Pure model: it picks among tokens and assembles the 0003 `edit` record but
+// never touches the DOM — the caller (client.js) reads the computed color, paints
+// the throwaway inline preview, and reads provenance. `tokens` is the only
+// dependency, injected for testing.
 
 // Color facets the control offers, mapped to the CSS property each drives.
 // Designers see Fill / Text / Border; the edit and agent see the CSS property.
@@ -22,14 +25,19 @@ export const COLOR_PROPS = ['background-color', 'color', 'border-color'];
 
 export const createColorModel = ({ tokens }) => {
   // Extract the semantic role token referenced in a declared value, e.g.
-  // 'var(--surface-brand-default)' → '--surface-brand-default'. Raw colors
-  // (hex/rgb) or a primitive ref yield null → the intent is flagged as having
-  // no semantic role (may need one introduced before the swap is safe).
+  // 'var(--surface-brand-default)' → '--surface-brand-default'. The role is
+  // whatever custom property the value references — Pointcut does not assume a
+  // design system's role-name vocabulary (ADR 0001). A reference that names a
+  // swatch in the introspected primitive ramp is a raw primitive, not a role,
+  // so it yields null. Raw colors (hex/rgb) also yield null → the intent is
+  // flagged as having no semantic role (may need one introduced before the swap
+  // is safe).
   const roleOf = (declaredValue) => {
-    const m = /var\(\s*(--(?:surface|text|border|icon)-[\w-]+)/.exec(
-      String(declaredValue || ''),
-    );
-    return m ? m[1] : null;
+    const m = /var\(\s*(--[\w-]+)/.exec(String(declaredValue || ''));
+    if (!m) return null;
+    const ref = m[1];
+    const isPrimitive = tokens.colorRamp().some((s) => s.name === ref);
+    return isPrimitive ? null : ref;
   };
 
   // Open a picking session for one property. `before` is the element's current

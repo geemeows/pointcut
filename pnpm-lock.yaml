@@ -24,6 +24,8 @@ importers:
         specifier: ^5.6.0
         version: 5.9.3
 
+  examples/fake-ui-kit: {}
+
   examples/react-vite:
     dependencies:
       react:
@@ -45,6 +47,12 @@ importers:
 
   examples/vue-vite:
     dependencies:
+      '@demo/fake-ui-kit':
+        specifier: workspace:*
+        version: link:../fake-ui-kit
+      '@pointcut/core':
+        specifier: workspace:*
+        version: link:../../packages/core
       vue:
         specifier: ^3.5.0
         version: 3.5.38(typescript@5.9.3)
