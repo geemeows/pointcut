@@ -11,6 +11,7 @@
 import { createUnplugin, type UnpluginFactory } from 'unplugin';
 import { createEditorLaunch } from '@pointcut/core';
 import { createVueStamper } from './stampers/vue';
+import { createJsxStamper } from './stampers/jsx';
 
 export type Framework = 'auto' | 'vue' | 'jsx' | 'svelte' | 'html';
 
@@ -38,13 +39,18 @@ export interface Stamper {
 /** The import the client is injected as. Re-exported so consumers can opt out. */
 export const CLIENT_IMPORT = '@pointcut/core/client';
 
-// Resolve the active Stamper set for the configured framework. 'auto' and 'vue'
-// both yield the Vue Stamper today; JSX / Svelte / HTML join as they're ported.
+// Resolve the active Stamper set for the configured framework. An explicit
+// framework forces exactly that stamper; 'auto' returns every available stamper
+// and lets each one's `test()` self-gate by file extension (.vue → Vue,
+// .jsx/.tsx → JSX). Svelte / HTML join as they're ported.
 function resolveStampers(framework: Framework): Stamper[] {
   switch (framework) {
     case 'vue':
-    case 'auto':
       return [createVueStamper()];
+    case 'jsx':
+      return [createJsxStamper()];
+    case 'auto':
+      return [createVueStamper(), createJsxStamper()];
     default:
       return [];
   }
@@ -93,9 +99,13 @@ export const unpluginFactory: UnpluginFactory<PointcutOptions | undefined> = (op
 
       // Auto-attach — mount the Bridge's editor-launch endpoint on the running
       // dev server. `enabled: true` because `apply: 'serve'` already gates us.
+      // Typed structurally and loosely so it stays bundler-agnostic yet remains
+      // assignable from Vite's concrete `ViteDevServer` (whose connect `.use`
+      // has a richer overload set) when vite types are present at build time.
       configureServer(server: {
         config: { root: string };
-        middlewares: { use: (handler: unknown) => void };
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        middlewares: { use: (...args: any[]) => unknown };
       }) {
         const editorLaunch = createEditorLaunch({ enabled: true, cwd: server.config.root });
         server.middlewares.use(editorLaunch);
