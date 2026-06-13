@@ -5,15 +5,23 @@
 // empty for same-origin auto-attach, http://localhost:<port> for the sidecar.
 //
 // Builds on the #4 tracer-bullet Pick path (hover/lock pick + jump-to-source)
-// and adds the #7 no-Agent handoff paths: each lock now also captures the pick
-// as an Annotation in a Queue/Session, and the toolbar gains "Copy all" and
-// "Export". Both render through the ported Handoff builders (handoff.mjs) — no
-// formatting logic lives here. The drawer, chat, agent-run, and introspection
-// panels arrive in later slices.
+// and layers on two later slices:
+//   • #5 send-to-Agent — a Send panel + run-mode selector (apply / apply-once /
+//     discuss) that POSTs the locked pick as an Annotation to the Bridge's
+//     agent-run endpoint and streams back its NDJSON Actions.
+//   • #7 no-Agent handoff — every lock also captures the pick as an Annotation
+//     in a Queue/Session, and the toolbar gains "Copy all" and "Export". Both
+//     render through the ported Handoff builders (handoff.mjs) — no formatting
+//     logic lives here.
+// The drawer, chat, and introspection panels arrive in later slices.
 import { createLocator } from '../models/locator.mjs';
+import { streamAgentRun } from '../models/agent-run.mjs';
 import { createQueue } from '../models/queue.mjs';
 // @ts-ignore — .mjs sibling, typed structurally by the builders' contract.
 import { buildHandoff, contextChipsBlock } from '../models/handoff.mjs';
+
+/** The run mode — sets the chosen agent's permission posture (mirrors AgentMode). */
+type RunMode = 'apply' | 'apply-once' | 'discuss';
 
 /** Replaced at build time by the unplugin `define`; '' means same-origin. */
 declare const __POINTCUT_BRIDGE__: string | undefined;
@@ -76,9 +84,47 @@ export function mount(): void {
         display: none;
       }
       .puck-wrap { position: relative; display: inline-flex; }
+      .panel {
+        position: fixed; right: 16px; bottom: 64px; z-index: 2147483647; display: none;
+        width: 280px; padding: 12px; border-radius: 10px; background: #1b1d21; color: #e7e9ee;
+        font: 12px/1.45 ui-sans-serif, system-ui; box-shadow: 0 6px 20px rgba(0,0,0,.4);
+      }
+      .panel.open { display: block; }
+      .panel .pick-loc { font: 11px/1.4 ui-monospace, monospace; color: #c6f24e; word-break: break-all; margin-bottom: 8px; cursor: pointer; }
+      .panel textarea {
+        width: 100%; box-sizing: border-box; min-height: 56px; resize: vertical; margin-bottom: 8px;
+        background: #11141a; color: #e7e9ee; border: 1px solid #2a2c2f; border-radius: 6px; padding: 6px;
+        font: 12px/1.4 ui-sans-serif, system-ui;
+      }
+      .panel .row { display: flex; gap: 6px; margin-bottom: 8px; }
+      .panel select {
+        flex: 1; background: #11141a; color: #e7e9ee; border: 1px solid #2a2c2f;
+        border-radius: 6px; padding: 4px; font: 12px/1 ui-sans-serif, system-ui;
+      }
+      .panel .send {
+        width: 100%; border: none; border-radius: 6px; padding: 8px; cursor: pointer;
+        background: #c6f24e; color: #11141a; font: 600 12px/1 ui-sans-serif, system-ui;
+      }
+      .panel .send:disabled { opacity: .5; cursor: default; }
+      .panel .log { margin-top: 8px; max-height: 120px; overflow: auto; font: 11px/1.5 ui-monospace, monospace; color: #aeb2bd; }
+      .panel .log div { white-space: pre-wrap; word-break: break-all; }
     </style>
     <div class="outline"></div>
     <div class="tag"></div>
+    <div class="panel">
+      <div class="pick-loc"></div>
+      <textarea class="msg" placeholder="Describe the change for the agent…"></textarea>
+      <div class="row">
+        <select class="agent" title="Agent"></select>
+        <select class="mode" title="Run mode">
+          <option value="apply">apply</option>
+          <option value="apply-once">apply-once</option>
+          <option value="discuss">discuss</option>
+        </select>
+      </div>
+      <button class="send" disabled>Send to agent</button>
+      <div class="log"></div>
+    </div>
     <div class="bar">
       <button class="btn copy" title="Copy paste-and-go markdown for the whole queue" disabled>Copy all</button>
       <button class="btn export" title="Download the handoff with screenshots embedded" disabled>Export</button>
@@ -97,6 +143,13 @@ export function mount(): void {
   const copyBtn = $<HTMLButtonElement>('.copy');
   const exportBtn = $<HTMLButtonElement>('.export');
   const countBadge = $<HTMLElement>('.count');
+  const panel = $<HTMLElement>('.panel');
+  const pickLoc = $<HTMLElement>('.pick-loc');
+  const msgInput = $<HTMLTextAreaElement>('.msg');
+  const agentSelect = $<HTMLSelectElement>('.agent');
+  const modeSelect = $<HTMLSelectElement>('.mode');
+  const sendBtn = $<HTMLButtonElement>('.send');
+  const logEl = $<HTMLElement>('.log');
 
   const locator = createLocator({ doc: document, win: window, locAttr: LOC_ATTR });
 
@@ -110,6 +163,8 @@ export function mount(): void {
   });
 
   let picking = false;
+  // The locked pick awaiting a Send: its loc (or null = none).
+  let lockedLoc: string | null = null;
 
   // Is `node` part of our own Shadow DOM? Walk up parents AND shadow hosts.
   const isOwn = (node: Node | null): boolean => {
@@ -205,52 +260,83 @@ export function mount(): void {
     if (!on) hideOutline();
   };
 
-  // Hover highlights the element under the cursor (skipping our own UI).
-  const onMove = (e: MouseEvent) => {
-    if (!picking) return;
-    const el = e.composedPath()[0] as Element | undefined;
-    if (!el || !(el as any).nodeType || isOwn(el)) {
-      hideOutline();
-      return;
-    }
-    positionOutline(el);
+  // ---- Send-to-Agent -------------------------------------------------------
+  const log = (line: string) => {
+    const div = document.createElement('div');
+    div.textContent = line;
+    logEl.appendChild(div);
+    logEl.scrollTop = logEl.scrollHeight;
   };
 
-  // Click locks the pick: resolve to the nearest stamped ancestor, capture it
-  // as an Annotation (loc + label + structural path + screenshot), enqueue it,
-  // and jump to source — the Pick path stays intact, the Queue is the addition.
-  const onClick = (e: MouseEvent) => {
-    if (!picking) return;
-    const target = e.composedPath()[0] as Element;
-    if (isOwn(target)) return;
-    e.preventDefault();
-    e.stopPropagation();
-    const el = locator.stampedAncestor(target);
-    const loc = (el.getAttribute ? el.getAttribute(LOC_ATTR) : null) || '';
-    const label = labelFor(el);
-    const classList =
-      typeof el.className === 'string' && el.className.trim() ? el.className.trim().split(/\s+/) : [];
-
-    queue.add({
-      id: queue.newId(),
-      type: TYPES[0]!.id,
-      label,
-      loc,
-      comment: '', // tracer bullet captures the pick; the change note is a later slice
-      path: locator.indexPath(el),
-      outerHTML: el.outerHTML || '',
-      screenshot: captureShot(el, label, loc),
-      // Locator/provenance signals reused below to render this pick as a
-      // read-only context chip in the Copy-all output.
-      tag: el.tagName.toLowerCase(),
-      classList,
-    });
-    refreshBar();
-
-    openInEditor(loc);
-    setPicking(false);
+  // Probe the Bridge for installed agents once; populate the agent picker. The
+  // first installed agent is the default selection; Send stays disabled if none.
+  let probed = false;
+  const probeAgents = () => {
+    if (probed) return;
+    probed = true;
+    fetch(`${bridgeBase}/__pointcut/agents`)
+      .then((r) => (r.ok ? r.json() : { agents: [] }))
+      .then((data: { agents?: Array<{ name: string }> }) => {
+        const agents = data.agents || [];
+        agentSelect.innerHTML = '';
+        agents.forEach((a) => {
+          const opt = document.createElement('option');
+          opt.value = a.name;
+          opt.textContent = a.name;
+          agentSelect.appendChild(opt);
+        });
+        sendBtn.disabled = !lockedLoc || agents.length === 0;
+      })
+      .catch(() => {});
   };
 
+  // Open the Send panel for a freshly locked pick: show its loc, offer Send.
+  const lockPick = (loc: string | null) => {
+    lockedLoc = loc;
+    pickLoc.textContent = loc ? `pick: ${loc}` : 'pick: (no source stamp)';
+    panel.classList.add('open');
+    logEl.innerHTML = '';
+    probeAgents();
+    sendBtn.disabled = !lockedLoc || agentSelect.options.length === 0;
+  };
+
+  // POST the locked pick as an Annotation (markdown carrying the source loc +
+  // the user's note) to the Bridge, then dispatch the NDJSON Action stream.
+  const send = () => {
+    if (!lockedLoc) return;
+    const agent = agentSelect.value;
+    if (!agent) return;
+    const mode = (modeSelect.value || 'apply') as RunMode;
+    const note = msgInput.value.trim();
+    const markdown =
+      `## Annotation 1\n- source: ${lockedLoc}\n` + (note ? `- request: ${note}\n` : '');
+    sendBtn.disabled = true;
+    logEl.innerHTML = '';
+    log(`→ ${agent} (${mode})`);
+    streamAgentRun(
+      { agent, markdown, mode, images: [], resume: null },
+      {
+        onAction: (a: any) => {
+          if (a.kind === 'text' && !a.delta) log(a.text);
+          else if (a.kind === 'tool') log(`[${a.name}] ${a.file || a.command || ''}`.trim());
+          else if (a.kind === 'result') log(a.ok ? '✓ done' : `✗ ${a.errorText || 'failed'}`);
+        },
+        onBridgeError: (m: string) => log(`error: ${m}`),
+        onBridgeEnd: () => {},
+        onStreamEnd: () => {
+          sendBtn.disabled = false;
+        },
+        onError: (m: string) => {
+          log(`request failed: ${m}`);
+          sendBtn.disabled = false;
+        },
+      },
+      // Same-origin auto-attach uses bare fetch; the sidecar prefixes the base URL.
+      bridgeBase ? (url: string, init?: RequestInit) => fetch(bridgeBase + url, init) : undefined,
+    );
+  };
+
+  // ---- Copy all / Export (no-Agent handoff) --------------------------------
   // Each queued pick doubles as a read-only context chip: same locator /
   // provenance signals (loc, tag, classList, screenshot) the chip builder
   // expects, telling the agent which on-page elements the handoff concerns.
@@ -263,13 +349,8 @@ export function mount(): void {
     screenshot: a.screenshot,
   });
 
-  // ---- Copy all (no-Agent handoff) -----------------------------------------
   // Emit paste-and-go markdown for the whole Queue/Session and write it to the
-  // clipboard. Screenshots are referenced (not inlined) so the markdown stays
-  // pasteable into a chat; the bubble popover holds the images. Numbering comes
-  // from numberOf() so it matches the on-screen count. The handoff is followed
-  // by the context-chips block (read-only element references) so the agent
-  // knows exactly which on-page elements the message concerns.
+  // clipboard, followed by the context-chips block (read-only element refs).
   const copyAll = async () => {
     const items = queue.all();
     if (!items.length) return;
@@ -288,7 +369,6 @@ export function mount(): void {
     }
   };
 
-  // ---- Export (no-Agent handoff) -------------------------------------------
   // Download the handoff with screenshots embedded (embedImages → each shot is
   // inlined as a data-URL <img>), so the file is self-contained.
   const exportAll = () => {
@@ -328,6 +408,51 @@ export function mount(): void {
     }, 1200);
   };
 
+  // Hover highlights the element under the cursor (skipping our own UI).
+  const onMove = (e: MouseEvent) => {
+    if (!picking) return;
+    const el = e.composedPath()[0] as Element | undefined;
+    if (!el || !(el as any).nodeType || isOwn(el)) {
+      hideOutline();
+      return;
+    }
+    positionOutline(el);
+  };
+
+  // Click locks the pick: resolve to the nearest stamped ancestor, capture it
+  // as an Annotation (loc + label + path + screenshot) into the Queue, and open
+  // the Send panel for it. The loc line in the panel jumps to source on click.
+  const onClick = (e: MouseEvent) => {
+    if (!picking) return;
+    const target = e.composedPath()[0] as Element;
+    if (isOwn(target)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const el = locator.stampedAncestor(target);
+    const loc = (el.getAttribute ? el.getAttribute(LOC_ATTR) : null) || '';
+    const label = labelFor(el);
+    const classList =
+      typeof el.className === 'string' && el.className.trim() ? el.className.trim().split(/\s+/) : [];
+
+    queue.add({
+      id: queue.newId(),
+      type: TYPES[0]!.id,
+      label,
+      loc,
+      comment: '', // tracer bullet captures the pick; the change note is a later slice
+      path: locator.indexPath(el),
+      outerHTML: el.outerHTML || '',
+      screenshot: captureShot(el, label, loc),
+      // Locator/provenance signals reused to render this pick as a context chip.
+      tag: el.tagName.toLowerCase(),
+      classList,
+    });
+    refreshBar();
+
+    lockPick(loc || null);
+    setPicking(false);
+  };
+
   puck.addEventListener('click', (e) => {
     e.stopPropagation();
     setPicking(!picking);
@@ -339,6 +464,15 @@ export function mount(): void {
   exportBtn.addEventListener('click', (e) => {
     e.stopPropagation();
     exportAll();
+  });
+  sendBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    send();
+  });
+  // The loc line jumps to source — the #4 tracer-bullet path, still available.
+  pickLoc.addEventListener('click', (e) => {
+    e.stopPropagation();
+    openInEditor(lockedLoc);
   });
   document.addEventListener('mousemove', onMove, true);
   document.addEventListener('click', onClick, true);

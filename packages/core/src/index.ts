@@ -5,6 +5,11 @@
 // (unplugin auto-attach AND the sidecar) inherits the same gate. There is
 // exactly one Bridge implementation; bundlers only mount the handler.
 import type { IncomingMessage, ServerResponse } from 'node:http';
+// The Bridge guts are framework-free `.mjs` ESM (editor-launch + agent-probe +
+// agent-run, assembled in bridge.mjs). `createBridge` below delegates to it; the
+// type surface (Action / AgentMode / Driver / BridgeOptions / BridgeHandler)
+// stays here so consumers import everything from one typed entry point.
+import { createBridge as createBridgeImpl } from './bridge/bridge.mjs';
 
 // Pure authoring models, lifted verbatim from the source toolbar (issue #2).
 // Framework-free factories with injected collaborators (storage, doc/win,
@@ -37,8 +42,10 @@ export * from './drivers/cursor.mjs';
 
 // Editor-launch — the jump-to-source half of the Bridge, mountable on its own
 // ahead of the full `createBridge()` (issue #4 tracer bullet). The agent-probe
-// and agent-run endpoints join it when the Bridge guts are ported.
+// and agent-run endpoints (issue #5) compose with it inside `createBridge()`.
 export * from './bridge/editor-launch.mjs';
+export * from './bridge/agent-probe.mjs';
+export * from './bridge/agent-run.mjs';
 
 /** The agent run mode — sets the chosen Driver's permission posture. */
 export type AgentMode = 'apply' | 'apply-once' | 'discuss';
@@ -82,13 +89,11 @@ export type BridgeHandler = (req: IncomingMessage, res: ServerResponse, next?: (
 
 /**
  * Build the Bridge handler (editor-launch + agent-probe + agent-run → NDJSON).
- * Returns a no-op handler when `enabled` is false so it can never run in prod.
+ * Returns a no-op passthrough when `enabled` is false so it can never run in prod.
  *
- * Stub — guts ported in the Bridge step of the porting order.
+ * Delegates to the framework-free guts in `./bridge/bridge.mjs`; this typed
+ * wrapper is the single entry point consumers import.
  */
 export function createBridge(options: BridgeOptions): BridgeHandler {
-  if (!options.enabled) {
-    return (_req, _res, next) => next?.();
-  }
-  throw new Error('@pointcut/core: createBridge() not yet implemented');
+  return createBridgeImpl(options) as BridgeHandler;
 }

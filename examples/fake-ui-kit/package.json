@@ -1,0 +1,11 @@
+{
+  "name": "@demo/fake-ui-kit",
+  "version": "0.0.0",
+  "private": true,
+  "description": "A stand-in third-party UI kit for the Pointcut demo: its CSS loads from node_modules so provenance can flag a vendor-owned rule (issue #6).",
+  "type": "module",
+  "exports": {
+    "./styles.css": "./styles.css"
+  },
+  "files": ["styles.css"]
+}

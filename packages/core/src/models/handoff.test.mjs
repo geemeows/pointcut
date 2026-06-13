@@ -73,19 +73,19 @@ test('off-scale edit renders the "needs a decision" flag', () => {
   assert.match(md, /No exact token:.*needs a decision/);
 });
 
-test('Spark-flagged edit renders the prop/variant directive and a no-node_modules line', () => {
+test('vendor-flagged edit renders the prop/variant directive and a no-node_modules line', () => {
   const edit = {
     property: 'background-color',
     before: 'rgb(0,0,255)',
     after: { token: '--surface-brand', value: '#0a64ff', offScale: false },
-    provenance: { selector: '.spark-button', sourceKind: 'spark' },
+    provenance: { selector: '.ui-button', sourceKind: 'vendor' },
     role: 'surface-brand',
   };
   const md = editBlock(edit);
   assert.match(md, /\*\*Semantic role:\*\* `surface-brand`/);
   assert.match(md, /use a prop\/variant change at the usage site/);
   assert.match(md, /Do not edit node_modules/);
-  assert.doesNotMatch(md, /Smallest edit/); // spark gets the prop directive instead
+  assert.doesNotMatch(md, /Smallest edit/); // vendor gets the prop directive instead
 });
 
 test('color edit names the current role and directs a role swap, not a primitive write', () => {
@@ -165,12 +165,12 @@ test('chipBlock with no screenshot omits the screenshot line', () => {
   assert.doesNotMatch(chipBlock(chipBase, 1), /Screenshot/);
 });
 
-test('chipBlock flags a Spark-owned element with the no-node_modules directive', () => {
+test('chipBlock flags a vendor-owned element with the no-node_modules directive', () => {
   const md = chipBlock(
-    { ...chipBase, provenance: { selector: '.spark-btn', sourceKind: 'spark', value: '#fff' } },
+    { ...chipBase, provenance: { selector: '.ui-btn', sourceKind: 'vendor', value: '#fff' } },
     1,
   );
-  assert.match(md, /Spark-owned/);
+  assert.match(md, /Vendor-owned/);
   assert.match(md, /do not edit node_modules/);
 });
 
