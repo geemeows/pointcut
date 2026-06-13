@@ -17,7 +17,7 @@ const labelOf = (a, types) => (types.find((t) => t.id === a.type) || types[0]).l
 // One structured visual-tweak intent (a member of an Annotation's `edits[]`)
 // rendered as explicit, unambiguous instructions: name the snapped token, point
 // at where the style is defined, and tell the agent how small the edit must be.
-// Spark-owned styles get a prop/variant directive instead of a source edit, and
+// Vendor-owned styles get a prop/variant directive instead of a source edit, and
 // off-scale snaps are flagged as needing a human decision (D3, D5, D9).
 export const editBlock = (e) => {
   // Copy (0007): a pure wording change — no token, no provenance subtleties.
@@ -49,8 +49,8 @@ export const editBlock = (e) => {
         `  - **⚠ No semantic role applies** — this color isn't backed by a \`--surface\`/\`--text\`/\`--border\`/\`--icon\` token. A semantic role may need to be introduced before the swap; flag for design-system review rather than writing the primitive.`,
       );
     }
-    if (e.provenance && e.provenance.sourceKind === 'spark') {
-      lines.push('  - **Spark-owned — use a prop/variant change at the usage site.**');
+    if (e.provenance && e.provenance.sourceKind === 'vendor') {
+      lines.push('  - **Vendor-owned — use a prop/variant change at the usage site.**');
       lines.push('  - **Do not edit node_modules.**');
     }
     return lines.join('\n');
@@ -59,8 +59,8 @@ export const editBlock = (e) => {
   if (e.after.offScale) {
     lines.push(`  - **⚠ No exact token:** nearest is ${token} — needs a decision.`);
   }
-  if (e.provenance && e.provenance.sourceKind === 'spark') {
-    lines.push('  - **Spark-owned — use a prop/variant change at the usage site.**');
+  if (e.provenance && e.provenance.sourceKind === 'vendor') {
+    lines.push('  - **Vendor-owned — use a prop/variant change at the usage site.**');
     lines.push('  - **Do not edit node_modules.**');
   } else {
     lines.push(
@@ -120,8 +120,8 @@ export const chipBlock = (c, n) => {
     const kind = p.sourceKind ? ` _(${p.sourceKind})_` : '';
     lines.push(`- **Style source:** \`${p.selector}\`${kind}`);
   }
-  if (p && p.sourceKind === 'spark') {
-    lines.push('- **Spark-owned** — discuss a prop/variant change at the usage site; do not edit node_modules.');
+  if (p && p.sourceKind === 'vendor') {
+    lines.push('- **Vendor-owned** — discuss a prop/variant change at the usage site; do not edit node_modules.');
   }
   if (c.screenshot) lines.push(`- **Screenshot:** _(attached — image ${n})_`);
   return lines.join('\n');

@@ -16,7 +16,7 @@
 //   {
 //     property,                          // CSS property, e.g. 'padding'
 //     before,                            // current declared value, e.g. '20px'
-//     after: { token, value, offScale }, // snapped NDS token (from 0001)
+//     after: { token, value, offScale }, // snapped project token (from 0001)
 //     provenance,                        // where the style is defined (from 0002):
 //                                        //   { selector, sourceKind, classList, guidance? }
 //     role,                              // inferred semantic color role (0005); null otherwise

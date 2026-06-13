@@ -2,8 +2,9 @@
 // Design Toolbar — typography stepper model (0006; see ../design-toolbar-plugin.js).
 //
 // The type control (D4, D6, D7, ADR 0002). Like the spacing stepper (0004) but
-// across three facets — size, weight, line-height — each walking its own NDS
-// scale (--font-size-* / --font-weight-* / --font-line-height-*, via 0001) so
+// across three facets — size, weight, line-height — each walking its own
+// introspected scale (length-typed sizes, number-typed weights/line-heights via
+// 0001, sub-grouped by optional prefix hints) so
 // every value lands on a real token. The seed is snapped to the nearest token
 // and badged off-scale when it isn't exact; a step lands exactly (off-scale
 // clears). Unlike color, type carries no semantic role, so its edit rides the
