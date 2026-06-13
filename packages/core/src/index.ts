@@ -6,6 +6,23 @@
 // exactly one Bridge implementation; bundlers only mount the handler.
 import type { IncomingMessage, ServerResponse } from 'node:http';
 
+// Pure authoring models, lifted verbatim from the source toolbar (issue #2).
+// Framework-free factories with injected collaborators (storage, doc/win,
+// tokens, fetch), so they carry no DOM or bundler dependency. Tokens and
+// Provenance move here as-lifted; their design-system-agnostic rework is a
+// separate slice. Co-located `*.test.mjs` suites run under `node --test`.
+export * from './models/queue.mjs';
+export * from './models/locator.mjs';
+export * from './models/tokens.mjs';
+export * from './models/provenance.mjs';
+export * from './models/spacing.mjs';
+export * from './models/color.mjs';
+export * from './models/typography.mjs';
+export * from './models/copy.mjs';
+export * from './models/chat.mjs';
+export * from './models/handoff.mjs';
+export * from './models/agent-run.mjs';
+
 /** The agent run mode — sets the chosen Driver's permission posture. */
 export type AgentMode = 'apply' | 'apply-once' | 'discuss';
 
