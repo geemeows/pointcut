@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Pointcut — esbuild + Sidecar demo</title>
+    <style>
+      body { font: 15px/1.5 ui-sans-serif, system-ui; margin: 0; padding: 32px; color: #1a1c1f; }
+      .page { max-width: 640px; margin: 0 auto; }
+      .card { border: 1px solid #ddd; border-radius: 10px; padding: 16px; margin: 16px 0; }
+      .cta { padding: 8px 14px; border-radius: 8px; border: 1px solid #1a1c1f; background: #1a1c1f; color: #fff; cursor: pointer; }
+      .cta.ghost { background: transparent; color: #1a1c1f; }
+      code { background: #f0f0f0; padding: 1px 5px; border-radius: 4px; }
+    </style>
+  </head>
+  <body>
+    <div id="app"></div>
+    <!-- esbuild emits dist/main.js next to a copy of this file. -->
+    <script type="module" src="./main.js"></script>
+  </body>
+</html>

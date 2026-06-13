@@ -22,14 +22,32 @@ const isLocalOrigin = (origin: string | undefined): boolean =>
 
 export function startSidecar(options: SidecarOptions = {}): Server {
   const port = options.port ?? DEFAULT_PORT;
+  // Byte-for-byte the SAME handler the unplugin auto-attaches (ADR-0002): the
+  // Sidecar is a peer, not a degraded fallback, so the two paths can't diverge.
   const handler = createBridge({ enabled: true, cwd: options.cwd ?? process.cwd() });
 
   const server = createServer((req, res) => {
     const origin = req.headers.origin;
     if (isLocalOrigin(origin)) {
+      // CORS: only ever reflect a localhost origin. A non-localhost origin gets
+      // no Access-Control-Allow-Origin at all, so the browser blocks the read.
       res.setHeader('Access-Control-Allow-Origin', origin as string);
       res.setHeader('Vary', 'Origin');
+      res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+      res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
     }
+
+    // Preflight: the client's cross-origin POST to the agent-run endpoint
+    // (Content-Type: application/json) triggers an OPTIONS preflight. Answer it
+    // here — short-circuit before the Bridge, which only speaks GET/POST — so
+    // the real request goes through. A non-localhost preflight gets a 403 with
+    // no ACAO, so the browser never sends the actual request.
+    if (req.method === 'OPTIONS') {
+      res.statusCode = isLocalOrigin(origin) ? 204 : 403;
+      res.end();
+      return;
+    }
+
     handler(req, res);
   });
 

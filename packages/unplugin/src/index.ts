@@ -76,23 +76,62 @@ function resolveStampers(framework: Framework): Stamper[] {
   }
 }
 
+// The compile-time placeholder the client reads to find the Bridge. It is the
+// ONE base-URL coupling point: empty string = same-origin (auto-attach mounts
+// the Bridge on the running dev server), otherwise the Sidecar's cross-origin
+// URL (dev-server-less Rollup/Rolldown/esbuild/Farm — ADR-0002). The client
+// guards with `typeof __POINTCUT_BRIDGE__ === 'string'`, so the value we stamp
+// is always a JSON string literal (never `undefined`).
+const BRIDGE_PLACEHOLDER = '__POINTCUT_BRIDGE__';
+
+// Resolve the Bridge base URL the client should fetch against. A configured
+// `bridge.port` is the Sidecar signal — the client lives in the static build
+// and reaches the Sidecar cross-origin at http://localhost:<port>. With no
+// port we are on the auto-attach path: same-origin, so the base URL is empty.
+function resolveBridgeBase(bridge: PointcutOptions['bridge']): string {
+  return bridge?.port ? `http://localhost:${bridge.port}` : '';
+}
+
 export const unpluginFactory: UnpluginFactory<PointcutOptions | undefined> = (options = {}) => {
   const stampers = resolveStampers(options.framework ?? 'auto');
   const inject = options.inject !== false;
+
+  // The literal we substitute for the placeholder, computed once. It is always
+  // a JSON-encoded string (`""` for same-origin, `"http://localhost:<port>"`
+  // for the Sidecar) so it drops straight into the client's `typeof … ===
+  // 'string'` guard and `bridgeBase` assignment.
+  const bridgeDefine = JSON.stringify(resolveBridgeBase(options.bridge));
 
   return {
     name: '@pointcut/unplugin',
     enforce: 'pre', // must run before the framework compiler turns templates/JSX into render code
 
-    // Source Stamp — route each module to the first Stamper that owns it.
+    // Two transform jobs, both genuinely shared across every bundler:
+    //   1. Source Stamp — route each module to the first Stamper that owns it.
+    //   2. Bridge base-URL stamp — replace the __POINTCUT_BRIDGE__ placeholder
+    //      with the resolved value. unplugin exposes no single universal
+    //      `define`, so we do the substitution here (the transform hook IS
+    //      universal): this covers Rollup/Rolldown/Farm — the dev-server-less
+    //      bundlers that actually need the Sidecar URL — with no per-bundler
+    //      define and no @rollup/plugin-replace dependency. The idiomatic native
+    //      `define` is ALSO wired below for the bundlers that have one
+    //      (Vite/esbuild/Webpack/Rspack); it is identical in effect, so
+    //      whichever fires first wins and the other finds nothing left to do.
     transform(code, id) {
       for (const stamper of stampers) {
         if (stamper.test(id)) {
           const result = stamper.transform(code, id);
           // magic-string's SourceMap satisfies the bundler's map input; the
           // Stamper interface keeps `map` opaque so it owns no unplugin types.
+          // Stamped modules are never the client, so no base-URL stamp here.
           return result ? { code: result.code, map: result.map as never } : undefined;
         }
+      }
+      // Not a stamped module: stamp the Bridge base URL if the placeholder is
+      // present (the client module, once it reaches the bundler). A plain
+      // string replace keeps this framework-free and dependency-free.
+      if (code.includes(BRIDGE_PLACEHOLDER)) {
+        return { code: code.split(BRIDGE_PLACEHOLDER).join(bridgeDefine), map: null };
       }
       return undefined;
     },
@@ -102,6 +141,14 @@ export const unpluginFactory: UnpluginFactory<PointcutOptions | undefined> = (op
     // production build — Pointcut never ships to prod (CONTEXT.md, ADR-0001).
     vite: {
       apply: 'serve',
+
+      // Idiomatic native `define` (mirrors the universal transform stamp above):
+      // Vite substitutes the placeholder for the resolved base URL. Same effect
+      // as the transform path — Vite is the auto-attach (same-origin) case, so
+      // this is `""`, but a configured `bridge.port` flows through identically.
+      config() {
+        return { define: { [BRIDGE_PLACEHOLDER]: bridgeDefine } };
+      },
 
       // Inject — auto-attach the client to the served page. `inject: false`
       // suppresses it so the consumer imports '@pointcut/core/client' itself.
@@ -129,36 +176,47 @@ export const unpluginFactory: UnpluginFactory<PointcutOptions | undefined> = (op
       },
     },
 
-    // Webpack auto-attach. Webpack's unplugin config object has no
-    // `apply: 'serve'` distinction (that lock is Vite-only), so the design-mode
-    // hard guard is implemented here directly: we mount the Bridge ONLY when the
-    // compiler is not a production build (`mode !== 'production'`). That is lock
-    // #2 — even if a user wired the plugin into a prod webpack config, the Bridge
-    // would never attach. Lock #1 (the user's own dev condition, e.g.
-    // `process.env.DESIGN`) still lives in their config, exactly as with Vite.
-    //
-    // The Bridge rides the dev-server middleware hook
-    // (`devServer.setupMiddlewares`, the webpack-dev-server v4+ replacement for
-    // the deprecated before/after hooks). We register the SAME handler the Vite
-    // path mounts via `makeBridge`, and we WRAP any existing `setupMiddlewares`
-    // so a user who already customises their middleware chain keeps it: we prepend
-    // the Bridge, then delegate to theirs (or pass `middlewares` through untouched
-    // when they have none). `compiler` is loosely typed (`any`) for the same
-    // reason `server` is on the Vite path: we only touch a small structural subset
-    // of webpack's Compiler (`options.mode`, `options.context`,
-    // `options.devServer`), and pulling in webpack's types here would make this
-    // bundler-agnostic package depend on a single bundler.
-    webpack(compiler: any) {
-      mountBridgeOnDevServer(compiler, options.agents);
+    // esbuild base-URL stamp. Idiomatic native `define` — the SAME substitution
+    // as the universal transform above (whichever runs first wins); we wire it
+    // natively so the stamp survives esbuild's own constant-folding/minification
+    // pass rather than relying on transform order. esbuild is dev-server-less in
+    // the Sidecar setup, so `bridge.port` is the common case here — the client
+    // gets http://localhost:<port>. esbuild's `define` needs a valid JS
+    // expression; `bridgeDefine` is a JSON string literal, which is exactly that.
+    esbuild: {
+      config(buildOptions) {
+        buildOptions.define = { ...buildOptions.define, [BRIDGE_PLACEHOLDER]: bridgeDefine };
+      },
     },
 
-    // Rspack auto-attach — identical contract to Webpack (Rspack is a drop-in
-    // webpack-compatible compiler with the same `devServer.setupMiddlewares`
-    // hook), so it delegates to the very same helper. Keeping this a one-liner is
-    // the point: parity with Vite means one install, one Bridge, no per-bundler
-    // behavioural drift (issue #11, AC #3).
+    // Webpack does two jobs here, both via the running compiler:
+    //   1. Auto-attach (issue #11). Webpack's unplugin config object has no
+    //      `apply: 'serve'` distinction (that lock is Vite-only), so the
+    //      design-mode hard guard lives in `mountBridgeOnDevServer`: it mounts the
+    //      Bridge ONLY when `mode !== 'production'` (lock #2), riding the
+    //      `devServer.setupMiddlewares` hook with the SAME handler the Vite path
+    //      uses via `makeBridge`, and wrapping any user-defined middleware.
+    //   2. Base-URL stamp (issue #12). Inject webpack's own DefinePlugin —
+    //      resolved from `compiler.webpack` so we bind to the exact instance and
+    //      add no dependency — mirroring the universal transform stamp so the
+    //      value survives webpack's constant-folding. `compiler` is loosely typed
+    //      (`any`) for the same reason `server` is on the Vite path: we touch only
+    //      a small documented structural subset of webpack's Compiler.
+    webpack(compiler: any) {
+      mountBridgeOnDevServer(compiler, options.agents);
+      const DefinePlugin = compiler?.webpack?.DefinePlugin;
+      if (DefinePlugin) new DefinePlugin({ [BRIDGE_PLACEHOLDER]: bridgeDefine }).apply(compiler);
+    },
+
+    // Rspack — identical contract to Webpack (Rspack is a drop-in
+    // webpack-compatible compiler with the same `devServer.setupMiddlewares` hook
+    // and DefinePlugin), so it does the same two jobs through the same helpers.
+    // Parity with Vite means one install, one Bridge, no per-bundler behavioural
+    // drift (issue #11, AC #3).
     rspack(compiler: any) {
       mountBridgeOnDevServer(compiler, options.agents);
+      const DefinePlugin = compiler?.webpack?.DefinePlugin;
+      if (DefinePlugin) new DefinePlugin({ [BRIDGE_PLACEHOLDER]: bridgeDefine }).apply(compiler);
     },
   };
 };
