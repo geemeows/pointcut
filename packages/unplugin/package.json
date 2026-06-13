@@ -1,0 +1,31 @@
+{
+  "name": "@pointcut/unplugin",
+  "version": "0.0.0",
+  "description": "Universal transform/inject + dev-server auto-attach for Pointcut, across all bundlers via unplugin.",
+  "type": "module",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18"
+  },
+  "exports": {
+    ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" },
+    "./vite": { "types": "./dist/vite.d.ts", "import": "./dist/vite.js" },
+    "./rollup": { "types": "./dist/rollup.d.ts", "import": "./dist/rollup.js" },
+    "./webpack": { "types": "./dist/webpack.d.ts", "import": "./dist/webpack.js" },
+    "./rspack": { "types": "./dist/rspack.d.ts", "import": "./dist/rspack.js" },
+    "./esbuild": { "types": "./dist/esbuild.d.ts", "import": "./dist/esbuild.js" },
+    "./farm": { "types": "./dist/farm.d.ts", "import": "./dist/farm.js" }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test"
+  },
+  "dependencies": {
+    "@pointcut/core": "workspace:*",
+    "magic-string": "^0.30.11",
+    "unplugin": "^2.1.0"
+  }
+}
