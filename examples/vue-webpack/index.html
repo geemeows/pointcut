@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Pointcut — Vue + Webpack tracer bullet</title>
+    <!--
+      The stand-in third-party UI kit, linked by URL straight from node_modules
+      (served by devServer.static). A <link> (not a JS CSS import) keeps a real
+      stylesheet `href` under node_modules in dev, which is exactly the signal
+      Pointcut's provenance walker uses to flag the rule as vendor-owned — no
+      design-system names involved (issue #6). A JS `import '...styles.css'`
+      would inline a <style> tag with a null href and defeat the demonstration.
+    -->
+    <link rel="stylesheet" href="/node_modules/@demo/fake-ui-kit/styles.css" />
+  </head>
+  <body>
+    <div id="app"></div>
+    <!-- html-webpack-plugin injects the bundled <script> automatically. -->
+  </body>
+</html>
