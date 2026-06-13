@@ -6,9 +6,11 @@
 //      HTML-grammars; Babel/SWC AST for JSX).
 //   2. Inject — auto-prepend `import '@pointcut/core/client'` into the entry
 //      (opt out with `inject:false` and import it yourself).
-// Plus the thin per-dev-server auto-attach glue that mounts createBridge()
-// (lives in the per-bundler entry files, e.g. Vite configureServer).
+// Plus the thin per-dev-server auto-attach glue that mounts the Bridge
+// (here: editor-launch via createEditorLaunch — the #4 tracer-bullet slice).
 import { createUnplugin, type UnpluginFactory } from 'unplugin';
+import { createEditorLaunch } from '@pointcut/core';
+import { createVueStamper } from './stampers/vue';
 
 export type Framework = 'auto' | 'vue' | 'jsx' | 'svelte' | 'html';
 
@@ -33,14 +35,74 @@ export interface Stamper {
   transform(code: string, id: string): { code: string; map: unknown } | null;
 }
 
-export const unpluginFactory: UnpluginFactory<PointcutOptions | undefined> = (_options = {}) => ({
-  name: '@pointcut/unplugin',
-  enforce: 'pre', // must run before the framework compiler turns templates/JSX into render code
-  transform(_code, _id) {
-    // Source Stamp + inject land here; stub keeps the build green.
-    return null;
-  },
-});
+/** The import the client is injected as. Re-exported so consumers can opt out. */
+export const CLIENT_IMPORT = '@pointcut/core/client';
+
+// Resolve the active Stamper set for the configured framework. 'auto' and 'vue'
+// both yield the Vue Stamper today; JSX / Svelte / HTML join as they're ported.
+function resolveStampers(framework: Framework): Stamper[] {
+  switch (framework) {
+    case 'vue':
+    case 'auto':
+      return [createVueStamper()];
+    default:
+      return [];
+  }
+}
+
+export const unpluginFactory: UnpluginFactory<PointcutOptions | undefined> = (options = {}) => {
+  const stampers = resolveStampers(options.framework ?? 'auto');
+  const inject = options.inject !== false;
+
+  return {
+    name: '@pointcut/unplugin',
+    enforce: 'pre', // must run before the framework compiler turns templates/JSX into render code
+
+    // Source Stamp — route each module to the first Stamper that owns it.
+    transform(code, id) {
+      for (const stamper of stampers) {
+        if (stamper.test(id)) {
+          const result = stamper.transform(code, id);
+          // magic-string's SourceMap satisfies the bundler's map input; the
+          // Stamper interface keeps `map` opaque so it owns no unplugin types.
+          return result ? { code: result.code, map: result.map as never } : undefined;
+        }
+      }
+      return undefined;
+    },
+
+    // Vite-specific glue. `apply: 'serve'` is the design-mode hard guard: even
+    // when a user opts the plugin into their config, it stays inert in a
+    // production build — Pointcut never ships to prod (CONTEXT.md, ADR-0001).
+    vite: {
+      apply: 'serve',
+
+      // Inject — auto-attach the client to the served page. `inject: false`
+      // suppresses it so the consumer imports '@pointcut/core/client' itself.
+      transformIndexHtml() {
+        if (!inject) return undefined;
+        return [
+          {
+            tag: 'script',
+            attrs: { type: 'module' },
+            children: `import ${JSON.stringify(CLIENT_IMPORT)}`,
+            injectTo: 'body',
+          },
+        ];
+      },
+
+      // Auto-attach — mount the Bridge's editor-launch endpoint on the running
+      // dev server. `enabled: true` because `apply: 'serve'` already gates us.
+      configureServer(server: {
+        config: { root: string };
+        middlewares: { use: (handler: unknown) => void };
+      }) {
+        const editorLaunch = createEditorLaunch({ enabled: true, cwd: server.config.root });
+        server.middlewares.use(editorLaunch);
+      },
+    },
+  };
+};
 
 export const unplugin = /* #__PURE__ */ createUnplugin(unpluginFactory);
 export default unplugin;
