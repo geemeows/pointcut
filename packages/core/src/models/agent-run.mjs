@@ -41,7 +41,7 @@ const dispatchLine = (line, h) => {
 export const streamAgentRun = (request, handlers, fetchImpl) => {
   const h = handlers;
   const doFetch = fetchImpl || fetch;
-  return doFetch('/__luciq_agent', {
+  return doFetch('/__pointcut/agent', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(request),
