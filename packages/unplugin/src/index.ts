@@ -11,6 +11,7 @@
 import { createUnplugin, type UnpluginFactory } from 'unplugin';
 import { createEditorLaunch } from '@pointcut/core';
 import { createVueStamper } from './stampers/vue';
+import { createSvelteStamper } from './stampers/svelte';
 
 export type Framework = 'auto' | 'vue' | 'jsx' | 'svelte' | 'html';
 
@@ -38,13 +39,17 @@ export interface Stamper {
 /** The import the client is injected as. Re-exported so consumers can opt out. */
 export const CLIENT_IMPORT = '@pointcut/core/client';
 
-// Resolve the active Stamper set for the configured framework. 'auto' and 'vue'
-// both yield the Vue Stamper today; JSX / Svelte / HTML join as they're ported.
+// Resolve the active Stamper set for the configured framework. Each stamper's
+// test() gates by extension, so 'auto' just hands over every ported stamper and
+// lets the file id pick the owner. JSX / HTML join as they're ported.
 function resolveStampers(framework: Framework): Stamper[] {
   switch (framework) {
     case 'vue':
-    case 'auto':
       return [createVueStamper()];
+    case 'svelte':
+      return [createSvelteStamper()];
+    case 'auto':
+      return [createVueStamper(), createSvelteStamper()];
     default:
       return [];
   }
