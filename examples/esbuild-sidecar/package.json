@@ -1,0 +1,18 @@
+{
+  "name": "@pointcut/example-esbuild-sidecar",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Dev-server-less esbuild demo: static build + standalone Sidecar Bridge reached cross-origin.",
+  "scripts": {
+    "dev": "node build.mjs --watch",
+    "build": "node build.mjs",
+    "sidecar": "pointcut-sidecar"
+  },
+  "devDependencies": {
+    "@pointcut/core": "workspace:*",
+    "@pointcut/sidecar": "workspace:*",
+    "@pointcut/unplugin": "workspace:*",
+    "esbuild": "^0.24.0"
+  }
+}
