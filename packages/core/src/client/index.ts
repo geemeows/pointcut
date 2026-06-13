@@ -52,15 +52,34 @@ export function mount(): void {
   const shadow = host.attachShadow({ mode: 'open' });
   shadow.innerHTML = `
     <style>
-      :host { all: initial; }
+      :host {
+        all: initial;
+        /* Pointcut identity — chartreuse-on-charcoal, scoped to the Shadow DOM.
+           Chartreuse ramp (lemon → deep), anchored at chartreuse-500. Used
+           sparingly: primary action, active/selected state, and brand accent. */
+        --pc-chartreuse-50:  #F8FFE6;
+        --pc-chartreuse-200: #E2FD9B;
+        --pc-chartreuse-400: #C5FB37;
+        --pc-chartreuse-500: #B6FA05;
+        --pc-chartreuse-700: #83C700;
+        --pc-chartreuse-900: #1D6100;
+        /* Charcoal neutral — the toolbar surface (no chartreuse flood). */
+        --pc-charcoal:      #1a1c1f;
+        --pc-charcoal-ink:  #0e0f11;
+        --pc-charcoal-2:    #2a2c2f;
+        --pc-surface:       #1b1d21;
+        --pc-on-charcoal:   #e7e9ee;
+        --pc-muted:         #aeb2bd;
+      }
       .outline {
         position: fixed; z-index: 2147483646; pointer-events: none; display: none;
-        border: 1px solid #c6f24e; background: rgba(198,242,78,.10);
+        border: 1px solid var(--pc-chartreuse-500); background: rgba(182,250,5,.10);
         border-radius: 2px;
       }
       .tag {
         position: fixed; z-index: 2147483647; pointer-events: none; display: none;
-        font: 11px/1.4 ui-monospace, monospace; color: #11141a; background: #c6f24e;
+        font: 11px/1.4 ui-monospace, monospace; color: var(--pc-on-charcoal);
+        background: var(--pc-charcoal-ink); border: 1px solid var(--pc-chartreuse-500);
         padding: 1px 6px; border-radius: 4px; transform: translateY(-100%);
         white-space: nowrap;
       }
@@ -71,42 +90,42 @@ export function mount(): void {
       }
       .btn {
         height: 40px; padding: 0 12px; border-radius: 20px; border: none; cursor: pointer;
-        background: #2a2c2f; color: #e7e9ee; font: inherit;
+        background: var(--pc-charcoal-2); color: var(--pc-on-charcoal); font: inherit;
         box-shadow: 0 6px 20px rgba(0,0,0,.4);
       }
       .btn:disabled { opacity: .45; cursor: default; }
-      .puck { width: 40px; padding: 0; border-radius: 50%; }
-      .puck.on { background: #c6f24e; color: #11141a; }
+      .puck { width: 40px; padding: 0; border-radius: 50%; background: var(--pc-charcoal); }
+      .puck.on { background: var(--pc-chartreuse-500); color: var(--pc-charcoal-ink); }
       .count {
         position: absolute; top: -4px; left: -4px; min-width: 16px; height: 16px;
-        padding: 0 4px; border-radius: 8px; background: #c6f24e; color: #11141a;
+        padding: 0 4px; border-radius: 8px; background: var(--pc-chartreuse-500); color: var(--pc-charcoal-ink);
         font: 700 10px/16px ui-sans-serif, system-ui; text-align: center;
         display: none;
       }
       .puck-wrap { position: relative; display: inline-flex; }
       .panel {
         position: fixed; right: 16px; bottom: 64px; z-index: 2147483647; display: none;
-        width: 280px; padding: 12px; border-radius: 10px; background: #1b1d21; color: #e7e9ee;
+        width: 280px; padding: 12px; border-radius: 10px; background: var(--pc-surface); color: var(--pc-on-charcoal);
         font: 12px/1.45 ui-sans-serif, system-ui; box-shadow: 0 6px 20px rgba(0,0,0,.4);
       }
       .panel.open { display: block; }
-      .panel .pick-loc { font: 11px/1.4 ui-monospace, monospace; color: #c6f24e; word-break: break-all; margin-bottom: 8px; cursor: pointer; }
+      .panel .pick-loc { font: 11px/1.4 ui-monospace, monospace; color: var(--pc-chartreuse-500); word-break: break-all; margin-bottom: 8px; cursor: pointer; }
       .panel textarea {
         width: 100%; box-sizing: border-box; min-height: 56px; resize: vertical; margin-bottom: 8px;
-        background: #11141a; color: #e7e9ee; border: 1px solid #2a2c2f; border-radius: 6px; padding: 6px;
+        background: var(--pc-charcoal-ink); color: var(--pc-on-charcoal); border: 1px solid var(--pc-charcoal-2); border-radius: 6px; padding: 6px;
         font: 12px/1.4 ui-sans-serif, system-ui;
       }
       .panel .row { display: flex; gap: 6px; margin-bottom: 8px; }
       .panel select {
-        flex: 1; background: #11141a; color: #e7e9ee; border: 1px solid #2a2c2f;
+        flex: 1; background: var(--pc-charcoal-ink); color: var(--pc-on-charcoal); border: 1px solid var(--pc-charcoal-2);
         border-radius: 6px; padding: 4px; font: 12px/1 ui-sans-serif, system-ui;
       }
       .panel .send {
         width: 100%; border: none; border-radius: 6px; padding: 8px; cursor: pointer;
-        background: #c6f24e; color: #11141a; font: 600 12px/1 ui-sans-serif, system-ui;
+        background: var(--pc-chartreuse-500); color: var(--pc-charcoal-ink); font: 600 12px/1 ui-sans-serif, system-ui;
       }
       .panel .send:disabled { opacity: .5; cursor: default; }
-      .panel .log { margin-top: 8px; max-height: 120px; overflow: auto; font: 11px/1.5 ui-monospace, monospace; color: #aeb2bd; }
+      .panel .log { margin-top: 8px; max-height: 120px; overflow: auto; font: 11px/1.5 ui-monospace, monospace; color: var(--pc-muted); }
       .panel .log div { white-space: pre-wrap; word-break: break-all; }
     </style>
     <div class="outline"></div>
@@ -221,9 +240,9 @@ export function mount(): void {
     const meta = `${label} · ${loc || 'unknown'} · ${w}×${h}`;
     const svg =
       `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">` +
-      `<rect x="0.5" y="0.5" width="${w - 1}" height="${h - 1}" fill="rgba(198,242,78,0.10)" ` +
-      `stroke="#c6f24e" stroke-width="1" rx="2"/>` +
-      `<text x="6" y="16" font-family="ui-monospace, monospace" font-size="11" fill="#11141a">${esc(meta)}</text>` +
+      `<rect x="0.5" y="0.5" width="${w - 1}" height="${h - 1}" fill="rgba(182,250,5,0.10)" ` +
+      `stroke="#B6FA05" stroke-width="1" rx="2"/>` +
+      `<text x="6" y="16" font-family="ui-monospace, monospace" font-size="11" fill="#0e0f11">${esc(meta)}</text>` +
       `</svg>`;
     // btoa needs Latin-1; SVG text may carry Unicode, so encode via UTF-8.
     const b64 = btoa(unescape(encodeURIComponent(svg)));
