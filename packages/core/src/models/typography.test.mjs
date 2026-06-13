@@ -23,11 +23,20 @@ const VARS = {
   '--font-line-height-100': '1.2',
   '--font-line-height-200': '1.5',
 };
+// Length-typed sizes and number-typed weights/line-heights overlap by value
+// type (ADR 0001), so this namespaced fixture passes prefix hints — the optional
+// refinement layer — to keep the three facets in separate scales.
+const HINTS = {
+  fontSize: '--font-size-',
+  fontWeight: '--font-weight-',
+  fontLineHeight: '--font-line-height-',
+};
 const model = (vars = VARS) =>
   createTypographyModel({
     tokens: createTokens({
       doc: { documentElement: {} },
       win: { getComputedStyle: () => makeDecl(vars) },
+      prefixHints: HINTS,
     }),
   });
 

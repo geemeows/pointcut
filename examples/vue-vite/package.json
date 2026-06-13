@@ -9,6 +9,8 @@
     "build": "vite build"
   },
   "dependencies": {
+    "@demo/fake-ui-kit": "workspace:*",
+    "@pointcut/core": "workspace:*",
     "vue": "^3.5.0"
   },
   "devDependencies": {
