@@ -30,25 +30,45 @@ export function mount(): void {
   const shadow = host.attachShadow({ mode: 'open' });
   shadow.innerHTML = `
     <style>
-      :host { all: initial; }
+      :host {
+        all: initial;
+        /* Pointcut identity — chartreuse-on-charcoal, scoped to the Shadow DOM.
+           Chartreuse ramp (lemon → deep), anchored at chartreuse-500. */
+        --pc-chartreuse-50:  #F8FFE6;
+        --pc-chartreuse-200: #E2FD9B;
+        --pc-chartreuse-400: #C5FB37;
+        --pc-chartreuse-500: #B6FA05;
+        --pc-chartreuse-700: #83C700;
+        --pc-chartreuse-900: #1D6100;
+        /* Charcoal neutral — the toolbar surface. */
+        --pc-charcoal:    #1a1c1f;
+        --pc-charcoal-ink: #0e0f11;
+        --pc-on-charcoal: #e7e9ee;
+      }
       .outline {
         position: fixed; z-index: 2147483646; pointer-events: none; display: none;
-        border: 1px solid #c6f24e; background: rgba(198,242,78,.10);
+        border: 1px solid var(--pc-chartreuse-500);
+        background: rgba(182,250,5,.10);
         border-radius: 2px;
       }
       .tag {
         position: fixed; z-index: 2147483647; pointer-events: none; display: none;
-        font: 11px/1.4 ui-monospace, monospace; color: #11141a; background: #c6f24e;
+        font: 11px/1.4 ui-monospace, monospace;
+        color: var(--pc-on-charcoal); background: var(--pc-charcoal-ink);
+        border: 1px solid var(--pc-chartreuse-500);
         padding: 1px 6px; border-radius: 4px; transform: translateY(-100%);
         white-space: nowrap;
       }
       .puck {
         position: fixed; right: 16px; bottom: 16px; z-index: 2147483647;
         width: 40px; height: 40px; border-radius: 50%; border: none; cursor: pointer;
-        background: #2a2c2f; color: #e7e9ee; font: 600 11px/1 ui-sans-serif, system-ui;
+        background: var(--pc-charcoal); color: var(--pc-on-charcoal);
+        font: 600 11px/1 ui-sans-serif, system-ui;
         box-shadow: 0 6px 20px rgba(0,0,0,.4);
       }
-      .puck.on { background: #c6f24e; color: #11141a; }
+      .puck.on {
+        background: var(--pc-chartreuse-500); color: var(--pc-charcoal-ink);
+      }
     </style>
     <div class="outline"></div>
     <div class="tag"></div>
