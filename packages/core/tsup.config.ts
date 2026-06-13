@@ -1,5 +1,9 @@
 import { defineConfig } from 'tsup';
 
+// No `clean` here: these three configs share one `dist/`, so a per-config clean
+// races its siblings — and in `--watch` it would wipe `dist/` on startup, the
+// window where examples resolve `@pointcut/core/dist/*` and crash. Cleaning is
+// the `build` script's job (`rm -rf dist && tsup`); watch only ever adds files.
 export default defineConfig([
   {
     // Node/library surface: models, drivers, Bridge guts.
@@ -8,7 +12,6 @@ export default defineConfig([
     platform: 'node',
     target: 'es2022',
     dts: true,
-    clean: true,
   },
   {
     // Browser surface: the in-page toolbar client (injected in design mode only).

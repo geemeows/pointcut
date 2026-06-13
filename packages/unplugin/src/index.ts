@@ -8,6 +8,7 @@
 //      (opt out with `inject:false` and import it yourself).
 // Plus the thin per-dev-server auto-attach glue that mounts the Bridge
 // (here: editor-launch via createEditorLaunch — the #4 tracer-bullet slice).
+import { fileURLToPath } from 'node:url';
 import { createUnplugin, type UnpluginFactory } from 'unplugin';
 import { createBridge } from '@pointcut/core';
 import { createVueStamper } from './stampers/vue';
@@ -40,6 +41,24 @@ export interface Stamper {
 
 /** The import the client is injected as. Re-exported so consumers can opt out. */
 export const CLIENT_IMPORT = '@pointcut/core/client';
+
+// Resolve the client to an absolute file path from THIS package, which always
+// depends on @pointcut/core — so injection never relies on the consumer's app
+// being able to resolve `@pointcut/core` itself. Under pnpm's strict layout the
+// consumer only links `@pointcut/unplugin`; `@pointcut/core` is nested here and
+// is NOT resolvable from their app root, so a bare `import '@pointcut/core/client'`
+// injected into their page fails ("Failed to resolve import"). Resolving here and
+// handing Vite an absolute path (served via `/@fs/`) sidesteps that entirely.
+function resolveClientPath(): string | null {
+  try {
+    // `import.meta.resolve` (not `require.resolve`): core's `./client` export is
+    // ESM-only (`import` condition, no `require`), so CJS resolution throws
+    // ERR_PACKAGE_PATH_NOT_EXPORTED. ESM resolution honours the `import` condition.
+    return fileURLToPath(import.meta.resolve(CLIENT_IMPORT));
+  } catch {
+    return null;
+  }
+}
 
 // The single source of truth for the auto-attached Bridge. Every dev-server
 // path (Vite `configureServer`, Webpack/Rspack `setupMiddlewares`) and the
@@ -154,11 +173,17 @@ export const unpluginFactory: UnpluginFactory<PointcutOptions | undefined> = (op
       // suppresses it so the consumer imports '@pointcut/core/client' itself.
       transformIndexHtml() {
         if (!inject) return undefined;
+        const clientPath = resolveClientPath();
+        if (!clientPath) return undefined;
+        // Serve the client by absolute path via Vite's `/@fs/` dev URL (POSIX
+        // separators). This is already a concrete URL the browser fetches, so —
+        // unlike an inline bare `import` — it needs no import-analysis pass and
+        // resolves regardless of the consumer's node_modules layout.
+        const fsUrl = `/@fs/${clientPath.replace(/\\/g, '/')}`;
         return [
           {
             tag: 'script',
-            attrs: { type: 'module' },
-            children: `import ${JSON.stringify(CLIENT_IMPORT)}`,
+            attrs: { type: 'module', src: fsUrl },
             injectTo: 'body',
           },
         ];
