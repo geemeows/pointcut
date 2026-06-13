@@ -35,6 +35,11 @@ export * from './drivers/claude.mjs';
 export * from './drivers/codex.mjs';
 export * from './drivers/cursor.mjs';
 
+// Editor-launch — the jump-to-source half of the Bridge, mountable on its own
+// ahead of the full `createBridge()` (issue #4 tracer bullet). The agent-probe
+// and agent-run endpoints join it when the Bridge guts are ported.
+export * from './bridge/editor-launch.mjs';
+
 /** The agent run mode — sets the chosen Driver's permission posture. */
 export type AgentMode = 'apply' | 'apply-once' | 'discuss';
 
