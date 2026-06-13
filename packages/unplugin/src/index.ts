@@ -41,6 +41,20 @@ export interface Stamper {
 /** The import the client is injected as. Re-exported so consumers can opt out. */
 export const CLIENT_IMPORT = '@pointcut/core/client';
 
+// The single source of truth for the auto-attached Bridge. Every dev-server
+// path (Vite `configureServer`, Webpack/Rspack `setupMiddlewares`) and the
+// Sidecar mount the SAME handler — no divergence (CONTEXT.md: "the same
+// `createBridge()` handler used by the Vite auto-attach and the Sidecar").
+// `enabled: true` is pinned because the caller has already cleared the
+// design-mode guard; `agents` is normalised exactly as the Vite path does
+// (an explicit array is the allow-list, anything else means 'auto'). `cwd` is
+// the only per-server difference: Vite reads `server.config.root`, Webpack and
+// Rspack read `compiler.options.context`.
+function makeBridge(cwd: string, agents: PointcutOptions['agents']) {
+  const allowList = Array.isArray(agents) ? agents : undefined;
+  return createBridge({ enabled: true, cwd, agents: allowList });
+}
+
 // Resolve the active Stamper set for the configured framework. An explicit
 // framework forces exactly that stamper; 'auto' returns every available stamper
 // and lets each one's `test()` self-gate by file extension (.vue → Vue,
@@ -158,40 +172,89 @@ export const unpluginFactory: UnpluginFactory<PointcutOptions | undefined> = (op
       // need (config.root + middlewares.use) is a subset of Vite's ViteDevServer,
       // and `middlewares.use` accepts a connect handler — our BridgeHandler fits.
       configureServer(server: { config: { root: string }; middlewares: { use: (handler: any) => void } }) {
-        const agents = Array.isArray(options.agents) ? options.agents : undefined;
-        const bridge = createBridge({ enabled: true, cwd: server.config.root, agents });
-        server.middlewares.use(bridge);
+        server.middlewares.use(makeBridge(server.config.root, options.agents));
       },
     },
 
-    // Idiomatic native `define` for the remaining bundlers that expose one. Each
-    // is the SAME substitution as the universal transform above (whichever runs
-    // first wins); we wire it natively so the stamp survives each bundler's own
-    // constant-folding/minification pass rather than relying on transform order.
-    // These bundlers are dev-server-less in the Sidecar setup, so `bridge.port`
-    // is the common case here — the client gets http://localhost:<port>.
+    // esbuild base-URL stamp. Idiomatic native `define` — the SAME substitution
+    // as the universal transform above (whichever runs first wins); we wire it
+    // natively so the stamp survives esbuild's own constant-folding/minification
+    // pass rather than relying on transform order. esbuild is dev-server-less in
+    // the Sidecar setup, so `bridge.port` is the common case here — the client
+    // gets http://localhost:<port>. esbuild's `define` needs a valid JS
+    // expression; `bridgeDefine` is a JSON string literal, which is exactly that.
     esbuild: {
-      // esbuild's `define` needs valid JS expressions; `bridgeDefine` is a JSON
-      // string literal, which is exactly that.
       config(buildOptions) {
         buildOptions.define = { ...buildOptions.define, [BRIDGE_PLACEHOLDER]: bridgeDefine };
       },
     },
 
-    // Webpack/Rspack: inject their respective DefinePlugin. Resolved from the
-    // running compiler's own webpack (`compiler.webpack`) so we bind to the
-    // exact instance and add no dependency. Typed loosely (`any`) for the same
-    // reason the Vite glue is — we touch only a documented structural subset.
+    // Webpack does two jobs here, both via the running compiler:
+    //   1. Auto-attach (issue #11). Webpack's unplugin config object has no
+    //      `apply: 'serve'` distinction (that lock is Vite-only), so the
+    //      design-mode hard guard lives in `mountBridgeOnDevServer`: it mounts the
+    //      Bridge ONLY when `mode !== 'production'` (lock #2), riding the
+    //      `devServer.setupMiddlewares` hook with the SAME handler the Vite path
+    //      uses via `makeBridge`, and wrapping any user-defined middleware.
+    //   2. Base-URL stamp (issue #12). Inject webpack's own DefinePlugin —
+    //      resolved from `compiler.webpack` so we bind to the exact instance and
+    //      add no dependency — mirroring the universal transform stamp so the
+    //      value survives webpack's constant-folding. `compiler` is loosely typed
+    //      (`any`) for the same reason `server` is on the Vite path: we touch only
+    //      a small documented structural subset of webpack's Compiler.
     webpack(compiler: any) {
+      mountBridgeOnDevServer(compiler, options.agents);
       const DefinePlugin = compiler?.webpack?.DefinePlugin;
       if (DefinePlugin) new DefinePlugin({ [BRIDGE_PLACEHOLDER]: bridgeDefine }).apply(compiler);
     },
+
+    // Rspack — identical contract to Webpack (Rspack is a drop-in
+    // webpack-compatible compiler with the same `devServer.setupMiddlewares` hook
+    // and DefinePlugin), so it does the same two jobs through the same helpers.
+    // Parity with Vite means one install, one Bridge, no per-bundler behavioural
+    // drift (issue #11, AC #3).
     rspack(compiler: any) {
+      mountBridgeOnDevServer(compiler, options.agents);
       const DefinePlugin = compiler?.webpack?.DefinePlugin;
       if (DefinePlugin) new DefinePlugin({ [BRIDGE_PLACEHOLDER]: bridgeDefine }).apply(compiler);
     },
   };
 };
+
+// Shared Webpack/Rspack auto-attach. Both bundlers expose the same Compiler
+// shape and the same `devServer.setupMiddlewares` dev-server hook, so the glue
+// is identical — factored out so Webpack and Rspack can NEVER diverge.
+//
+// The production hard guard (lock #2) lives here: in a production build we
+// return immediately and never touch `devServer`, so the Bridge cannot attach.
+// In dev we ensure a `devServer` object exists, then install/wrap
+// `setupMiddlewares` to prepend the Bridge handler ahead of the user's chain.
+function mountBridgeOnDevServer(compiler: any, agents: PointcutOptions['agents']): void {
+  const compilerOptions = compiler?.options ?? {};
+
+  // Lock #2: refuse to run in a production build. webpack/rspack default `mode`
+  // to 'production' when unset, so treating only an explicit non-production mode
+  // as design-mode is the safe, fail-closed choice (Design Mode never ships).
+  if (compilerOptions.mode === 'production') return;
+
+  const bridge = makeBridge(compilerOptions.context ?? process.cwd(), agents);
+
+  // Ensure a devServer config exists so the dev server (webpack-dev-server /
+  // @rspack/dev-server) picks up our middleware. We never overwrite a user's
+  // devServer block — only add the one hook we need.
+  const devServer = (compilerOptions.devServer ??= {});
+
+  // Wrap any pre-existing `setupMiddlewares` so the user's customisation is
+  // preserved: prepend the Bridge (it must see requests first to claim
+  // `/__pointcut/*`), then hand the chain to the user's hook (or return it
+  // unchanged when they have none). The signature mirrors webpack-dev-server's
+  // `(middlewares, devServerInstance) => middlewares`.
+  const userSetup = typeof devServer.setupMiddlewares === 'function' ? devServer.setupMiddlewares : undefined;
+  devServer.setupMiddlewares = (middlewares: any[], devServerInstance: any) => {
+    middlewares.unshift({ name: 'pointcut-bridge', middleware: bridge });
+    return userSetup ? userSetup(middlewares, devServerInstance) : middlewares;
+  };
+}
 
 export const unplugin = /* #__PURE__ */ createUnplugin(unpluginFactory);
 export default unplugin;
