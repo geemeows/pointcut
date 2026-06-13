@@ -23,6 +23,18 @@ export * from './models/chat.mjs';
 export * from './models/handoff.mjs';
 export * from './models/agent-run.mjs';
 
+// Agent Drivers + registry, lifted verbatim from the source toolbar (issue #3).
+// The Driver seam is the whole extensibility story: adding an agent is one
+// Driver module plus one registry entry — Bridge / protocol / client never
+// change. `getDriver(name)` + the `DRIVERS` map, the shared per-mode directive
+// and permission helpers, and the claude / codex / cursor drivers (cursor's
+// `models` discovers live). Co-located `*.test.mjs` suites run under `node --test`.
+export * from './drivers/shared.mjs';
+export * from './drivers/registry.mjs';
+export * from './drivers/claude.mjs';
+export * from './drivers/codex.mjs';
+export * from './drivers/cursor.mjs';
+
 /** The agent run mode — sets the chosen Driver's permission posture. */
 export type AgentMode = 'apply' | 'apply-once' | 'discuss';
 
