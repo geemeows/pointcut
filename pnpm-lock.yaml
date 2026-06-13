@@ -26,6 +26,15 @@ importers:
 
   examples/fake-ui-kit: {}
 
+  examples/html:
+    devDependencies:
+      '@pointcut/unplugin':
+        specifier: workspace:*
+        version: link:../../packages/unplugin
+      vite:
+        specifier: ^5.4.0
+        version: 5.4.21(@types/node@20.19.43)
+
   examples/react-vite:
     dependencies:
       react:

@@ -1,0 +1,15 @@
+{
+  "name": "@pointcut/example-html",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Plain HTML + Vite tracer-bullet demo: pick a live element, jump to its source.",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build"
+  },
+  "devDependencies": {
+    "@pointcut/unplugin": "workspace:*",
+    "vite": "^5.4.0"
+  }
+}

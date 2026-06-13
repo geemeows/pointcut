@@ -13,6 +13,7 @@ import { createBridge } from '@pointcut/core';
 import { createVueStamper } from './stampers/vue';
 import { createJsxStamper } from './stampers/jsx';
 import { createSvelteStamper } from './stampers/svelte';
+import { createHtmlStamper } from './stampers/html';
 
 export type Framework = 'auto' | 'vue' | 'jsx' | 'svelte' | 'html';
 
@@ -43,7 +44,7 @@ export const CLIENT_IMPORT = '@pointcut/core/client';
 // Resolve the active Stamper set for the configured framework. An explicit
 // framework forces exactly that stamper; 'auto' returns every available stamper
 // and lets each one's `test()` self-gate by file extension (.vue → Vue,
-// .jsx/.tsx → JSX, .svelte → Svelte). HTML joins as it's ported.
+// .jsx/.tsx → JSX, .svelte → Svelte, .html → HTML).
 function resolveStampers(framework: Framework): Stamper[] {
   switch (framework) {
     case 'vue':
@@ -52,8 +53,10 @@ function resolveStampers(framework: Framework): Stamper[] {
       return [createJsxStamper()];
     case 'svelte':
       return [createSvelteStamper()];
+    case 'html':
+      return [createHtmlStamper()];
     case 'auto':
-      return [createVueStamper(), createJsxStamper(), createSvelteStamper()];
+      return [createVueStamper(), createJsxStamper(), createSvelteStamper(), createHtmlStamper()];
     default:
       return [];
   }
