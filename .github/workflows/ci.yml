@@ -41,5 +41,5 @@ jobs:
       - name: Test
         run: pnpm test
 
-      - name: Build (publishable packages)
-        run: pnpm --filter "./packages/*" build
+      - name: Build
+        run: pnpm build
