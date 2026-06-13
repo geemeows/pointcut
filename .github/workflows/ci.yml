@@ -35,11 +35,14 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # Build first: packages resolve each other through their published
+      # `exports` (dist/*.d.ts and dist/*.js), so typecheck and tests both
+      # need the dist output to exist before they can resolve @pointcut/*.
+      - name: Build
+        run: pnpm build
+
       - name: Typecheck
         run: pnpm typecheck
 
       - name: Test
         run: pnpm test
-
-      - name: Build
-        run: pnpm build
