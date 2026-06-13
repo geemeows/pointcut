@@ -28,6 +28,7 @@
     "test": "node --import tsx --test"
   },
   "dependencies": {
+    "html-to-image": "^1.11.13",
     "launch-editor": "^2.8.1"
   }
 }
