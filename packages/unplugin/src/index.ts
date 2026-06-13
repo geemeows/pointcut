@@ -9,8 +9,10 @@
 // Plus the thin per-dev-server auto-attach glue that mounts the Bridge
 // (here: editor-launch via createEditorLaunch — the #4 tracer-bullet slice).
 import { createUnplugin, type UnpluginFactory } from 'unplugin';
-import { createEditorLaunch } from '@pointcut/core';
+import { createBridge } from '@pointcut/core';
 import { createVueStamper } from './stampers/vue';
+import { createJsxStamper } from './stampers/jsx';
+import { createSvelteStamper } from './stampers/svelte';
 import { createHtmlStamper } from './stampers/html';
 
 export type Framework = 'auto' | 'vue' | 'jsx' | 'svelte' | 'html';
@@ -39,17 +41,22 @@ export interface Stamper {
 /** The import the client is injected as. Re-exported so consumers can opt out. */
 export const CLIENT_IMPORT = '@pointcut/core/client';
 
-// Resolve the active Stamper set for the configured framework. Each stamper's
-// test() gates by extension, so 'auto' simply offers every ported stamper and
-// lets the file id pick the owner. JSX / Svelte join as they're ported.
+// Resolve the active Stamper set for the configured framework. An explicit
+// framework forces exactly that stamper; 'auto' returns every available stamper
+// and lets each one's `test()` self-gate by file extension (.vue → Vue,
+// .jsx/.tsx → JSX, .svelte → Svelte, .html → HTML).
 function resolveStampers(framework: Framework): Stamper[] {
   switch (framework) {
     case 'vue':
       return [createVueStamper()];
+    case 'jsx':
+      return [createJsxStamper()];
+    case 'svelte':
+      return [createSvelteStamper()];
     case 'html':
       return [createHtmlStamper()];
     case 'auto':
-      return [createVueStamper(), createHtmlStamper()];
+      return [createVueStamper(), createJsxStamper(), createSvelteStamper(), createHtmlStamper()];
     default:
       return [];
   }
@@ -96,16 +103,17 @@ export const unpluginFactory: UnpluginFactory<PointcutOptions | undefined> = (op
         ];
       },
 
-      // Auto-attach — mount the Bridge's editor-launch endpoint on the running
-      // dev server. `enabled: true` because `apply: 'serve'` already gates us.
-      configureServer(server: {
-        config: { root: string };
-        // Structurally compatible with Vite's overloaded connect `use`, so the
-        // hook stays assignable to ServerHook without pulling in vite's types.
-        middlewares: { use: (...args: any[]) => unknown };
-      }) {
-        const editorLaunch = createEditorLaunch({ enabled: true, cwd: server.config.root });
-        server.middlewares.use(editorLaunch);
+      // Auto-attach — mount the full Bridge (editor-launch + agent-probe +
+      // agent-run) on the running dev server. `enabled: true` because
+      // `apply: 'serve'` already gates us. `agents: 'auto'` (or absent) offers
+      // every installed CLI on PATH; an explicit array is the allow-list.
+      // `server` is loosely typed (`any`) on purpose: the structural shape we
+      // need (config.root + middlewares.use) is a subset of Vite's ViteDevServer,
+      // and `middlewares.use` accepts a connect handler — our BridgeHandler fits.
+      configureServer(server: { config: { root: string }; middlewares: { use: (handler: any) => void } }) {
+        const agents = Array.isArray(options.agents) ? options.agents : undefined;
+        const bridge = createBridge({ enabled: true, cwd: server.config.root, agents });
+        server.middlewares.use(bridge);
       },
     },
   };
