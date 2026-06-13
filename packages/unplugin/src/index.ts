@@ -11,6 +11,7 @@
 import { createUnplugin, type UnpluginFactory } from 'unplugin';
 import { createEditorLaunch } from '@pointcut/core';
 import { createVueStamper } from './stampers/vue';
+import { createHtmlStamper } from './stampers/html';
 
 export type Framework = 'auto' | 'vue' | 'jsx' | 'svelte' | 'html';
 
@@ -38,13 +39,17 @@ export interface Stamper {
 /** The import the client is injected as. Re-exported so consumers can opt out. */
 export const CLIENT_IMPORT = '@pointcut/core/client';
 
-// Resolve the active Stamper set for the configured framework. 'auto' and 'vue'
-// both yield the Vue Stamper today; JSX / Svelte / HTML join as they're ported.
+// Resolve the active Stamper set for the configured framework. Each stamper's
+// test() gates by extension, so 'auto' simply offers every ported stamper and
+// lets the file id pick the owner. JSX / Svelte join as they're ported.
 function resolveStampers(framework: Framework): Stamper[] {
   switch (framework) {
     case 'vue':
-    case 'auto':
       return [createVueStamper()];
+    case 'html':
+      return [createHtmlStamper()];
+    case 'auto':
+      return [createVueStamper(), createHtmlStamper()];
     default:
       return [];
   }
@@ -95,7 +100,9 @@ export const unpluginFactory: UnpluginFactory<PointcutOptions | undefined> = (op
       // dev server. `enabled: true` because `apply: 'serve'` already gates us.
       configureServer(server: {
         config: { root: string };
-        middlewares: { use: (handler: unknown) => void };
+        // Structurally compatible with Vite's overloaded connect `use`, so the
+        // hook stays assignable to ServerHook without pulling in vite's types.
+        middlewares: { use: (...args: any[]) => unknown };
       }) {
         const editorLaunch = createEditorLaunch({ enabled: true, cwd: server.config.root });
         server.middlewares.use(editorLaunch);
