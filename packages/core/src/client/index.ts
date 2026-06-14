@@ -120,10 +120,24 @@ export function mount() {
   const AGENT_ICON =
     '<svg viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg"><path d="M12 1.5l2.35 6.9 6.9 2.35-6.9 2.35L12 20l-2.35-6.9L2.75 10.75l6.9-2.35z"/></svg>';
 
-  // Pointcut mark (a target/crosshair — "point + cut"), shown as the brand and
-  // alone when the bar collapses to a circle.
+  // Pointcut brand mark, shown as the brand and alone when the bar collapses to
+  // a circle. Colors are driven by currentColor so it inherits --pc-accent (the
+  // same chartreuse the source asset hardcodes as #B6FA05); the negative-space
+  // cut is carved with a mask so it reads on any background.
   const SPARK_ICON =
-    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>';
+    '<svg viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Pointcut"><defs><mask id="pc-gap-mask"><rect width="1024" height="1024" fill="white"/><path d="M512 448 L580 512 L512 576 L444 512 Z" fill="black"/></mask></defs><g mask="url(#pc-gap-mask)" fill="currentColor"><path d="M154 480 H386 L438 512 L386 544 H154 C136 544 122 530 122 512 C122 494 136 480 154 480 Z"/><path d="M638 480 H870 C888 480 902 494 902 512 C902 530 888 544 870 544 H638 C620 544 606 530 606 512 C606 494 620 480 638 480 Z"/><path d="M512 154 V386 L626 500" fill="none" stroke="currentColor" stroke-width="72" stroke-linecap="round" stroke-linejoin="bevel"/><path d="M512 870 V638 L626 524" fill="none" stroke="currentColor" stroke-width="72" stroke-linecap="round" stroke-linejoin="bevel"/><path d="M364 404 H424 L470 450 H410 Z"/><path d="M364 620 H424 L470 574 H410 Z"/></g></svg>';
+
+  // ---- Brand wordmark font -------------------------------------------------
+  // The "Pointcut" wordmark uses Anta (Google Fonts). Fonts load at the document
+  // level — @font-face inside a shadow root is ignored — so we inject the
+  // stylesheet into <head> once; the shadow DOM then picks it up by family name.
+  if (!document.getElementById('pointcut-font-anta')) {
+    const fontLink = document.createElement('link');
+    fontLink.id = 'pointcut-font-anta';
+    fontLink.rel = 'stylesheet';
+    fontLink.href = 'https://fonts.googleapis.com/css2?family=Anta&display=swap';
+    document.head.appendChild(fontLink);
+  }
 
   // ---- Shadow host ---------------------------------------------------------
   const host = document.createElement('div');
@@ -174,19 +188,32 @@ export function mount() {
       .grip:hover { color: rgba(255,255,255,.6); }
       .grip.dragging { cursor: grabbing; color: rgba(255,255,255,.6); }
       .grip svg { width: 15px; height: 18px; display: block; }
-      /* Collapsed state — the bar shrinks to a circle showing only the puck. */
-      .bar.collapsed { padding: 0; gap: 0; border-radius: 50%; }
+      /* Collapsed state — the bar shrinks to the brand circle showing only the
+         puck. Colors mirror the collapsed-button brand asset: a near-black fill,
+         a faint cool-grey ring, and a soft drop shadow. */
+      .bar.collapsed {
+        padding: 0; gap: 0; border-radius: 50%;
+        background: #101214;
+        box-shadow: 0 0 0 1px #2A2F36, 0 12px 28px rgba(0,0,0,.5);
+      }
       .bar.collapsed > :not(.puck) { display: none; }
       .puck { display: none; }
       .bar.collapsed .puck {
         display: inline-flex; align-items: center; justify-content: center;
-        width: 44px; height: 44px; cursor: grab; color: var(--pc-accent);
+        width: 48px; height: 48px; cursor: grab; color: var(--pc-accent);
+        overflow: hidden; border-radius: 50%;
       }
       .bar.collapsed .puck.dragging { cursor: grabbing; }
-      .puck svg { width: 24px; height: 24px; display: block; }
-      .brand { display: inline-flex; align-items: center; padding: 0 4px 0 6px; flex: none; color: var(--pc-accent); }
-      /* nudge up ~1px: the wordmark's letters sit below the viewBox center due to the 'q' descender */
-      .brand svg { height: 20px; width: auto; display: block; transform: translateY(-1px); }
+      /* The mark's glyph fills ~76% of its viewBox, so a 48px box matches the
+         48px circle with the glyph filling it the way the brand asset does. */
+      .puck svg { width: 48px; height: 48px; display: block; }
+      .brand { display: inline-flex; align-items: center; gap: 4px; padding: 0 8px 0 6px; flex: none; color: var(--pc-accent); }
+      .brand-name {
+        font-family: 'Anta', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        font-size: 18px; font-weight: 400; letter-spacing: .01em; color: #fff; white-space: nowrap;
+      }
+      /* Negative margins keep the mark's transparent padding from inflating the pill's height. */
+      .brand svg { height: 36px; width: auto; display: block; margin: -3px 0; }
       .tool {
         all: unset; box-sizing: border-box; cursor: pointer; position: relative; display: inline-flex;
         align-items: center; gap: 8px; padding: 8px 12px; border-radius: 11px;
@@ -869,7 +896,7 @@ export function mount() {
         <span class="grip" title="Drag to move">
           <svg viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="5" r="1.6"/><circle cx="9" cy="12" r="1.6"/><circle cx="9" cy="19" r="1.6"/><circle cx="15" cy="5" r="1.6"/><circle cx="15" cy="12" r="1.6"/><circle cx="15" cy="19" r="1.6"/></svg>
         </span>
-        <span class="brand" title="Pointcut">${SPARK_ICON}</span>
+        <span class="brand" title="Pointcut">${SPARK_ICON}<span class="brand-name">Pointcut</span></span>
         <span class="divider"></span>
         <button class="tool" data-act="pick" title="Pick element / region">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8V5a2 2 0 0 1 2-2h3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M21 16v3a2 2 0 0 1-2 2h-3"/><circle cx="12" cy="12" r="2.5"/></svg>
