@@ -23,7 +23,7 @@ A per-agent module (claude / codex / cursor) that owns one agent CLI's recipe: b
 A normalized event in the uniform NDJSON stream the Bridge emits: `{t:'action',a}` | `{t:'error',m}` | `{t:'end',code}`. Drivers translate each agent's native events into Actions.
 
 **Annotation**:
-A single numbered pick — a DOM element or marqueed region captured with type tag, screenshot, and jump-to-source link. Annotations accumulate in the Queue/Session.
+A single numbered pick — a DOM element or marqueed region captured with a type tag and a jump-to-source link. Annotations accumulate in the Queue/Session.
 
 **Introspection**:
 How Pointcut stays design-system-agnostic. Tokens, style provenance, and component identity are **read from the installing project's live CSSOM and Source Stamps at runtime**, not configured per design system. The browser already holds the resolved cascade; Pointcut reverse-maps from it.
