@@ -8,17 +8,15 @@
 //
 // Flow: Pick mode highlights elements on hover and locks one on click — or drag
 // a marquee to annotate a whole area. Each saved Annotation has a type tag and
-// (for elements) a screenshot, and accumulates in a Session/Queue persisted to
-// localStorage. Numbered bubbles pin to annotated spots. A tabbed drawer holds
-// Comments (the Queue) and Chat (a continuous discuss session). "Export"
-// downloads a paste-and-go markdown Handoff with screenshots embedded; "Send to
-// agent" streams the chosen agent's Actions back through the Bridge. The source
-// loc is clickable to open the file in your editor.
+// accumulates in a Session/Queue persisted to localStorage. Numbered bubbles pin
+// to annotated spots. A tabbed drawer holds Comments (the Queue) and Chat (a
+// continuous discuss session). "Export" downloads a paste-and-go markdown
+// Handoff; "Send to agent" streams the chosen agent's Actions back through the
+// Bridge. The source loc is clickable to open the file in your editor.
 //
 // Pure-logic lives in the sibling models (../models/*.mjs) so this file is only
 // glue + DOM. The whole thing is wrapped in mount() (idempotent, SSR-safe) and
 // auto-mounts on import — the unplugin injects a bare `import '@pointcut/core/client'`.
-import { toPng } from 'html-to-image';
 import { createQueue } from '../models/queue.mjs';
 import { createLocator } from '../models/locator.mjs';
 // @ts-ignore — .mjs siblings, typed structurally by the builders' contract.
@@ -435,22 +433,6 @@ export function mount() {
         transition: opacity .12s, transform .12s; box-shadow: 0 4px 14px rgba(0,0,0,.45);
       }
       .crow-act:hover::after { opacity: 1; transform: translateX(-50%) translateY(0); }
-      /* Collapsible screenshot disclosure (popover + drawer rows) */
-      .shot-wrap { display: flex; flex-direction: column; }
-      .popover .shot-wrap { margin-bottom: 12px; }
-      .disclosure {
-        all: unset; box-sizing: border-box; cursor: pointer; display: inline-flex; align-items: center; gap: 6px;
-        align-self: flex-start; font-size: 11px; font-weight: 600; letter-spacing: .03em; text-transform: uppercase;
-        color: #8b93a1; margin-bottom: 8px; transition: color .12s;
-      }
-      .disclosure:hover { color: #cfd5df; }
-      .disclosure .chev { width: 13px; height: 13px; transition: transform .15s; }
-      .shot, .crow-shot {
-        width: 100%; border-radius: 10px; display: block; border: 1px solid rgba(255,255,255,.08);
-      }
-      .shot-wrap.collapsed .shot, .shot-wrap.collapsed .crow-shot { display: none; }
-      .shot-wrap.collapsed .disclosure { margin-bottom: 0; }
-      .shot-wrap.collapsed .disclosure .chev { transform: rotate(-90deg); }
       /* Titled blockquote comment (popover + drawer rows) */
       .comment-title {
         font-size: 11px; font-weight: 600; letter-spacing: .03em; text-transform: uppercase;
@@ -477,11 +459,6 @@ export function mount() {
       .src .src-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
       .src.linkable { cursor: pointer; }
       .src.linkable:hover { color: #8fb4ff; background: rgba(143,180,255,.12); }
-      .shot-toggle {
-        display: inline-flex; align-items: center; gap: 7px; cursor: pointer; margin-right: auto;
-        color: #cfd5df; font-size: 11px; user-select: none;
-      }
-      .shot-toggle input { width: 15px; height: 15px; margin: 0; border-radius: 4px; accent-color: var(--pc-accent); cursor: pointer; }
       .panel textarea {
         width: 100%; box-sizing: border-box; min-height: 76px; resize: none;
         background: #11141a; color: #fff; border: 1px solid #2b313c; border-radius: 12px;
@@ -766,10 +743,6 @@ export function mount() {
           <textarea class="cp-text" rows="2" placeholder="Edit the copy…"></textarea>
         </div>
         <div class="actions">
-          <label class="shot-toggle">
-            <input type="checkbox" class="shot-check" checked />
-            <span>Include screenshot?</span>
-          </label>
           <button data-act="send-agent">Send to agent</button>
           <button data-act="save" class="primary">Add comment</button>
         </div>
@@ -786,21 +759,11 @@ export function mount() {
           <div class="comment-title">Comment</div>
           <blockquote class="body"></blockquote>
         </div>
-        <div class="shot-wrap collapsed">
-          <button class="disclosure" data-act="toggle-shot">
-            <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
-            <span>Screenshot</span>
-          </button>
-          <img class="shot" alt="" />
-        </div>
         <div class="actions">
           <button class="act danger" data-act="delete" data-tip="Delete">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M10 11v6M14 11v6"/></svg>
           </button>
           <div class="act-right">
-            <button class="act" data-act="copy-img" data-tip="Copy image">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.8"/><path d="m21 15-4.5-4.5L7 20"/></svg>
-            </button>
             <button class="act" data-act="edit" data-tip="Edit">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
             </button>
@@ -977,8 +940,6 @@ export function mount() {
 
   const note = $('.note');
   const noteSrc = note.querySelector('.src');
-  const shotField = note.querySelector('.shot-toggle');
-  const shotCheck = note.querySelector('.shot-check');
   const noteText = note.querySelector('textarea');
   const spacingCtl = note.querySelector('.spacing-ctl');
   const spacingStepper = note.querySelector('.sp-stepper');
@@ -995,10 +956,7 @@ export function mount() {
 
   const popover = $('.popover');
   const popSrc = popover.querySelector('.src');
-  const popShotWrap = popover.querySelector('.shot-wrap');
-  const popShot = popover.querySelector('.shot');
   const popBody = popover.querySelector('.body');
-  const popCopyImg = popover.querySelector('[data-act="copy-img"]');
 
   let picking = false;
   let agentRunning = false;
@@ -1415,12 +1373,6 @@ export function mount() {
     selectedType = (prefill && prefill.type) || TYPES[0].id;
     noteText.value = (prefill && prefill.comment) || '';
     fillSrc(noteSrc, prefill ? prefill.loc : (pendingState.el ? pendingState.el.getAttribute(LOC_ATTR) : ''));
-    // Screenshot toggle only applies to element annotations (regions aren't a
-    // single DOM node, so there's nothing to capture). Default on for new ones;
-    // for edits, reflect whether a screenshot already exists.
-    const isRegion = pendingState.region ? true : prefill ? !!prefill.region : false;
-    shotField.style.display = isRegion ? 'none' : '';
-    shotCheck.checked = prefill ? !!prefill.screenshot : true;
     // Spacing control only applies to a fresh element pick (a live node to read
     // and preview against) — not regions or edits of an existing comment.
     resetSpacing();
@@ -1451,59 +1403,30 @@ export function mount() {
     pending = null;
   };
 
-  const captureShot = (el, id) => {
-    return toPng(el, { cacheBust: true, pixelRatio: 1 })
-      .then((png) => {
-        const a = Q.get(id);
-        if (a) {
-          a.screenshot = png;
-          Q.persist();
-          if (openPopId === id) {
-            popShot.src = png;
-            popShotWrap.style.display = '';
-            popShotWrap.classList.remove('collapsed');
-            popCopyImg.style.display = '';
-          }
-          if (drawerOpen) renderDrawer();
-        }
-      })
-      .catch(() => {}); // CORS images / detached nodes — skip silently
-  };
-
   // Commit the note (from the current `pending` state + fields) to the queue.
-  // Returns { id, shotPromise } — shotPromise resolves once the screenshot is
-  // captured (null when none) — or null if the comment is blank. Shared by the
-  // "Add comment" (Save) and "Send to Claude" buttons.
+  // Returns the committed annotation's id, or null if the comment is blank.
+  // Shared by the "Add comment" (Save) and "Send to Claude" buttons.
   const commitNote = () => {
     const comment = noteText.value.trim();
     if (!comment) {
       noteText.focus();
       return null;
     }
-    let shotPromise = null;
     if (pending && pending.editId) {
       const a = Q.get(pending.editId);
       if (a) {
         a.comment = comment;
         a.type = selectedType;
-        if (!a.region) {
-          if (shotCheck.checked && !a.screenshot) {
-            const el = locator.resolve(a);
-            if (el) shotPromise = captureShot(el, a.id);
-          } else if (!shotCheck.checked && a.screenshot) {
-            a.screenshot = null;
-          }
-        }
       }
       Q.persist();
       renderBubbles();
       if (drawerOpen) renderDrawer();
-      return { id: pending.editId, shotPromise };
+      return pending.editId;
     }
     const id = Q.newId();
     const a = {
       id, type: selectedType, comment,
-      loc: '', path: null, label: '', outerHTML: '', styles: {}, screenshot: null, region: null,
+      loc: '', path: null, label: '', outerHTML: '', styles: {}, region: null,
     };
     if (pending && pending.el) {
       const el = pending.el;
@@ -1540,7 +1463,6 @@ export function mount() {
       a.label = labelFor(el);
       a.outerHTML = el.outerHTML.slice(0, 2000);
       a.styles = keyStylesOf(el);
-      if (shotCheck.checked) shotPromise = captureShot(el, id);
     } else if (pending && pending.region) {
       a.region = pending.region;
       a.label = `region ${Math.round(pending.region.w)}×${Math.round(pending.region.h)}`;
@@ -1548,7 +1470,7 @@ export function mount() {
     Q.add(a);
     refreshCount();
     renderBubbles();
-    return { id, shotPromise };
+    return id;
   };
 
   const saveNote = () => {
@@ -1556,15 +1478,13 @@ export function mount() {
   };
 
   // Send the just-written comment straight to Claude instead of leaving it in
-  // the queue: commit it, wait for its screenshot, then run on that one comment.
-  // On success the run's removeSent() drops it from the queue.
+  // the queue: commit it, then run on that one comment. On success the run's
+  // removeSent() drops it from the queue.
   const sendNote = () => {
-    const res = commitNote();
-    if (!res) return;
+    const id = commitNote();
+    if (!id) return;
     closeNote();
-    const run = () => runAgent({ annotations: [Q.get(res.id)].filter(Boolean), note: '', surface: 'panel' });
-    if (res.shotPromise) res.shotPromise.then(run);
-    else run();
+    runAgent({ annotations: [Q.get(id)].filter(Boolean), note: '', surface: 'panel' });
   };
 
   // ---- Popover (view / edit / copy / delete) -------------------------------
@@ -1579,8 +1499,6 @@ export function mount() {
     // rect: a large element's left/bottom can sit far from where the bubble —
     // and the user's click — actually is.
     const bubble = bubblesWrap.querySelector('.bubble[data-id="' + openPopId + '"]');
-    // Latch the vertical side on first placement so expanding the screenshot
-    // (which animates the height) extends in one direction instead of jumping.
     popSide = placeBeside(popover, bubble ? bubble.getBoundingClientRect() : r, 'right', popSide);
   };
 
@@ -1590,16 +1508,6 @@ export function mount() {
     openPopId = id;
     popSide = null; // recompute the side fresh for this open
     fillSrc(popSrc, a.loc);
-    if (a.screenshot) {
-      popShot.src = a.screenshot;
-      popShotWrap.style.display = '';
-      popShotWrap.classList.add('collapsed'); // collapsed by default each open
-      popCopyImg.style.display = '';
-    } else {
-      popShot.removeAttribute('src');
-      popShotWrap.style.display = 'none';
-      popCopyImg.style.display = 'none';
-    }
     popBody.textContent = a.comment;
     popover.style.display = 'block';
     positionPopover();
@@ -1631,8 +1539,8 @@ export function mount() {
   // aligned with the on-screen bubbles via the queue index, so a checked subset
   // sent to Claude reads the same numbers as "Copy all" over the whole queue.
   const numberOf = (a) => Q.indexOf(a) + 1;
-  const toMarkdown = (embedImages) => buildHandoff(Q.all(), numberOf, embedImages, TYPES);
-  const toMarkdownFor = (annos) => buildHandoff(annos, numberOf, false, TYPES);
+  const toMarkdown = () => buildHandoff(Q.all(), numberOf, TYPES);
+  const toMarkdownFor = (annos) => buildHandoff(annos, numberOf, TYPES);
 
   const CHECK_SVG =
     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>';
@@ -1647,7 +1555,7 @@ export function mount() {
   };
 
   // ---- Send to agent -------------------------------------------------------
-  // POST the markdown handoff (+ screenshots) to the dev-server Bridge, which
+  // POST the markdown handoff to the dev-server Bridge, which
   // runs the selected agent's CLI, normalizes its events into Actions, and streams
   // them back as a uniform NDJSON protocol. The agent edits the source; HMR swaps
   // it in. The client stays agent-agnostic — it only consumes Actions.
@@ -1896,14 +1804,13 @@ export function mount() {
     if (anns.length) parts.push(toMarkdownFor(anns));
     if (text) parts.push('## Additional instruction\n' + text);
     const markdown = parts.join('\n\n');
-    const images = anns.map((a) => a.screenshot).filter(Boolean);
 
     // Echo the user's turn into the transcript.
     const cn = anns.length ? `${anns.length} comment${anns.length > 1 ? 's' : ''}` : '';
     cLog('you', '›', escHtml([cn, text && `“${text}”`].filter(Boolean).join(' + ')));
 
     streamAgentRun(
-      { agent: selectedAgent, model: selectedModel, markdown, images, resume: agentSessionId },
+      { agent: selectedAgent, model: selectedModel, markdown, resume: agentSessionId },
       {
         onAction: renderAction,
         onBridgeError: (m) => { agentErrored = true; cLog('err', '⚠', escHtml(m)); },
@@ -1943,7 +1850,7 @@ export function mount() {
     chatApplyBtn.setAttribute('aria-pressed', on ? 'true' : 'false');
   };
   // One chip per element attached to the current chat draft (0011). Numbered to
-  // match the screenshot image refs the turn's markdown cites.
+  // match the element references the turn's markdown cites.
   const renderChatChips = () => {
     chatChips.innerHTML = '';
     chat.chips().forEach((c, i) => {
@@ -1958,26 +1865,18 @@ export function mount() {
       chatChips.appendChild(chip);
     });
   };
-  // Capture a screenshot for a chip the same way annotations do — async, and
-  // tolerant of CORS/detached nodes (chip just stays image-less on failure).
-  const captureChipShot = (el, chip) =>
-    toPng(el, { cacheBust: true, pixelRatio: 1 })
-      .then((png) => { chip.screenshot = png; })
-      .catch(() => {});
   // Chat tab is active and the user picked an element: attach it as a read-only
   // context chip (D13) instead of opening a comment note. Reuses the locator +
   // style provenance (0002) — color is the most telling Spark/scoped/shared signal.
   const attachChatChip = (el) => {
     const prov = provenance.inspect(el, 'color');
-    const chip = chat.addChip({
+    chat.addChip({
       loc: el.getAttribute(LOC_ATTR) || '',
       label: labelFor(el),
       tag: el.tagName.toLowerCase(),
       classList: Array.from(el.classList || []),
       provenance: { selector: prov.selector, sourceKind: prov.sourceKind, value: prov.value },
-      screenshot: null,
     });
-    captureChipShot(el, chip);
     if (!drawerOpen) openDrawer(); // surface the landing chip + composer
     renderChatChips();
     chatStateUpdate();
@@ -2044,12 +1943,10 @@ export function mount() {
     const mode = chat.takeMode(); // discuss, or apply-once for this one turn (then OFF)
 
     // Fold any attached context chips into the turn: their element references go
-    // into the markdown, their screenshots ride along as numbered images (0011).
+    // into the markdown (0011).
     let markdown = text;
-    let images = [];
     if (chips.length) {
       markdown = (text ? text + '\n\n' : '') + contextChipsBlock(chips);
-      images = chips.map((c) => c.screenshot).filter(Boolean);
     }
     chat.clearChips(); // attachments are per-turn — no auto-carry (D13)
     renderChatChips();
@@ -2065,7 +1962,7 @@ export function mount() {
     chatText.value = '';
 
     streamAgentRun(
-      { agent: selectedAgent, model: selectedModel, markdown, images, resume: chat.sessionId(), mode },
+      { agent: selectedAgent, model: selectedModel, markdown, resume: chat.sessionId(), mode },
       {
         onAction: renderChatAction,
         onBridgeError: (m) => { agentErrored = true; cLog('err', '⚠', escHtml(m)); chat.record({ k: 'err', m }); },
@@ -2093,52 +1990,9 @@ export function mount() {
     surface = null;
   };
 
-  // Write the screenshot to the clipboard as an IMAGE (not text) so it can be
-  // pasted straight into Claude as a real image. One item per write, so this is
-  // per-annotation: paste the markdown once, then paste each image where needed.
-  // Decode a data: URL to a Blob synchronously — no fetch/await, so the clipboard
-  // write below stays inside the click's user-activation.
-  const dataURLToBlob = (dataURL) => {
-    const comma = dataURL.indexOf(',');
-    const meta = dataURL.slice(5, comma); // after "data:"
-    const mime = meta.split(';')[0] || 'image/png';
-    const bin = atob(dataURL.slice(comma + 1));
-    const arr = new Uint8Array(bin.length);
-    for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
-    return new Blob([arr], { type: mime });
-  };
-
-  // Download the screenshot as a PNG — the reliable path on http origins, where
-  // no API can place a genuinely pasteable image on the clipboard. Drag the file
-  // into Claude.
-  const downloadImage = (a, btn) => {
-    const link = document.createElement('a');
-    link.href = a.screenshot;
-    link.download = `annotation-${Q.indexOf(a) + 1}.png`;
-    link.click();
-    flash(btn, 'Saved PNG ↓');
-  };
-
-  const copyImage = (a, btn) => {
-    if (!a.screenshot) return;
-    // Secure context only: the async Clipboard API can place a real image/png
-    // that Claude accepts on paste. Falls back to a download otherwise.
-    if (window.ClipboardItem && navigator.clipboard && navigator.clipboard.write) {
-      try {
-        const blob = dataURLToBlob(a.screenshot);
-        navigator.clipboard
-          .write([new ClipboardItem({ 'image/png': blob })])
-          .then(() => flash(btn, 'Copied!'))
-          .catch(() => downloadImage(a, btn));
-        return;
-      } catch (_) {}
-    }
-    downloadImage(a, btn);
-  };
-
   const exportMarkdown = () => {
     if (!Q.count()) return;
-    const blob = new Blob([toMarkdown(true)], { type: 'text/markdown' });
+    const blob = new Blob([toMarkdown()], { type: 'text/markdown' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
@@ -2298,9 +2152,6 @@ export function mount() {
         `<svg class="crow-caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>` +
         `</div>` +
         `<div class="crow-detail">` +
-        (a.screenshot
-          ? `<div class="shot-wrap collapsed"><button class="disclosure" data-act="toggle-shot"><svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg><span>Screenshot</span></button><img class="crow-shot" src="${a.screenshot}" alt="" /></div>`
-          : '') +
         `<div class="comment"><div class="comment-title">Comment</div><blockquote class="crow-body"></blockquote></div>` +
         `</div>`;
       fillSrc(row.querySelector('.src'), a.loc);
@@ -2553,9 +2404,7 @@ export function mount() {
     }
     const btn = e.target.closest('button[data-act]');
     if (btn) {
-      if (btn.dataset.act === 'toggle-shot') {
-        btn.closest('.shot-wrap').classList.toggle('collapsed');
-      } else if (btn.dataset.act === 'drow-edit') {
+      if (btn.dataset.act === 'drow-edit') {
         closeDrawer();
         editAnnotation(id);
       } else if (btn.dataset.act === 'drow-delete') {
@@ -2603,16 +2452,12 @@ export function mount() {
     const btn = e.target.closest('button[data-act]');
     if (!btn) return;
     const act = btn.dataset.act;
-    if (act === 'toggle-shot') popShotWrap.classList.toggle('collapsed');
-    else if (act === 'delete') deleteAnnotation(openPopId);
+    if (act === 'delete') deleteAnnotation(openPopId);
     else if (act === 'edit') editAnnotation(openPopId);
     else if (act === 'send-agent') {
       const a = Q.get(openPopId);
       closePopover();
       if (a) runAgent({ annotations: [a], note: '', surface: 'panel' });
-    } else if (act === 'copy-img') {
-      const a = Q.get(openPopId);
-      if (a) copyImage(a, btn);
     }
   });
   popSrc.addEventListener('click', () => openInEditor(popSrc.dataset.loc));
@@ -2674,10 +2519,6 @@ export function mount() {
 
   // ---- Init ----------------------------------------------------------------
   // (Legacy-record backfill — missing id/type — is handled inside createQueue.)
-  // Label the popover image button (its tooltip) for what it can actually do
-  // here: a real clipboard copy needs a secure context; otherwise it downloads a PNG.
-  popCopyImg.dataset.tip =
-    window.ClipboardItem && navigator.clipboard && navigator.clipboard.write ? 'Copy image' : 'Save PNG';
   refreshCount();
   renderBubbles();
   restoreChat(); // replay the persisted chat transcript (resumes via chat.sessionId())

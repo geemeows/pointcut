@@ -5,7 +5,7 @@
 // localStorage serialization, id minting, and legacy-record backfill. Mutations
 // that change the set (add / remove / clear) persist as one step, so callers
 // stop repeating the "mutate then persist" ritual. In-place edits to a record's
-// fields (comment, screenshot…) are still done on the live object the caller
+// fields (comment, edits…) are still done on the live object the caller
 // holds, then committed with persist(). `storage` is injected for testability.
 //
 // all() returns the live array; remove/clear replace it, so read it fresh each

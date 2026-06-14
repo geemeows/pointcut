@@ -70,10 +70,8 @@ export const editBlock = (e) => {
   return lines.join('\n');
 };
 
-// One markdown block for a single Annotation, numbered `n`. With `embedImages`
-// the screenshot is inlined as a data-URL image; otherwise it's referenced as a
-// note to paste the image separately.
-export const blockFor = (a, n, embedImages, types) => {
+// One markdown block for a single Annotation, numbered `n`.
+export const blockFor = (a, n, types) => {
   const lines = [
     `### ${n}. [${labelOf(a, types)}] ${a.label}`,
     `- **Source:** \`${a.loc || 'unknown'}\``,
@@ -81,20 +79,13 @@ export const blockFor = (a, n, embedImages, types) => {
   ];
   if (a.edits && a.edits.length) a.edits.forEach((e) => lines.push(editBlock(e)));
   if (a.outerHTML) lines.push('- **Element:**', '```html', a.outerHTML, '```');
-  if (a.screenshot) {
-    lines.push(
-      embedImages
-        ? `- **Screenshot:**\n\n![annotation ${n}](${a.screenshot})`
-        : `- **Screenshot:** _(captured — paste image for item ${n} from the bubble popover)_`,
-    );
-  }
   return lines.join('\n');
 };
 
 // Full handoff for a list of Annotations. `numberOf(a)` returns each item's
 // display number (caller keeps it aligned with the on-screen bubbles).
-export const buildHandoff = (annotations, numberOf, embedImages, types) =>
-  [HANDOFF_HEADER, ...annotations.map((a) => blockFor(a, numberOf(a), embedImages, types))].join('\n\n');
+export const buildHandoff = (annotations, numberOf, types) =>
+  [HANDOFF_HEADER, ...annotations.map((a) => blockFor(a, numberOf(a), types))].join('\n\n');
 
 // ---- Context chips (0011) --------------------------------------------------
 // A chat turn can carry read-only element references picked while the Chat tab
@@ -106,8 +97,7 @@ export const CONTEXT_HEADER =
   'Context — the following on-page elements are attached to this message as ' +
   'read-only references for discussion (not a change request).\n';
 
-// One chip rendered as a compact reference block, numbered `n` so an attached
-// screenshot can be cited by image number (mirrors the annotation image refs).
+// One chip rendered as a compact reference block, numbered `n`.
 export const chipBlock = (c, n) => {
   const classes = (c.classList || []).join(' ');
   const lines = [
@@ -123,7 +113,6 @@ export const chipBlock = (c, n) => {
   if (p && p.sourceKind === 'vendor') {
     lines.push('- **Vendor-owned** — discuss a prop/variant change at the usage site; do not edit node_modules.');
   }
-  if (c.screenshot) lines.push(`- **Screenshot:** _(attached — image ${n})_`);
   return lines.join('\n');
 };
 

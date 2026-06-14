@@ -57,8 +57,8 @@ export const createChat = ({ storage, storageKey }) => {
     setApply: (on) => { apply = !!on; },
 
     // Context chips (0011): elements picked while the Chat tab is active, attached
-    // to the next turn only. Stored live (client.js fills in an async screenshot),
-    // returned as a shallow array copy. Cleared after a send (D13 — no auto-carry).
+    // to the next turn only. Returned as a shallow array copy. Cleared after a
+    // send (D13 — no auto-carry).
     chips: () => chips.slice(),
     addChip: (chip) => {
       chipSeq += 1;
