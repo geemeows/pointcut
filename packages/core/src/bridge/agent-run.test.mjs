@@ -83,8 +83,8 @@ const makeDriver = () => ({
   parse: (e) => (e && e.type === 'evt' ? [{ kind: 'text', text: e.text }] : []),
 });
 
-// Body parse (nextTick) → writeShots (real fs.mkdtemp) → buildArgs/spawn all
-// chain through async boundaries; a few macrotask turns lets them settle.
+// Body parse (nextTick) → buildArgs/spawn all chain through async boundaries; a
+// few macrotask turns lets them settle.
 const tick = async () => {
   for (let i = 0; i < 10; i++) await new Promise((r) => setTimeout(r, 2));
 };
@@ -123,7 +123,7 @@ test('createAgentRun: spawns the Driver, streams uniform NDJSON Actions + end', 
   });
   const res = fakeRes();
   handler(fakeReq('/__pointcut/agent', 'POST', { agent: 'fake', markdown: 'hi', mode: 'apply' }), res);
-  await tick(); // let readJsonBody + writeShots resolve
+  await tick(); // let readJsonBody resolve
 
   assert.equal(spawnedCmd, 'fake-cli');
   assert.deepEqual(spawnedArgs, ['--fake']);
@@ -146,7 +146,7 @@ test('createAgentRun: spawns the Driver, streams uniform NDJSON Actions + end', 
   assert.equal(res.ended, true);
 });
 
-test('createAgentRun: client disconnect kills the child and cleans temp PNGs', async () => {
+test('createAgentRun: client disconnect kills the child', async () => {
   const driver = makeDriver();
   const child = fakeChild();
   const handler = createAgentRun({
@@ -155,24 +155,13 @@ test('createAgentRun: client disconnect kills the child and cleans temp PNGs', a
     resolveDriver: () => driver,
   });
   const res = fakeRes();
-  const PNG = 'data:image/png;base64,' + Buffer.from('x').toString('base64');
-  handler(
-    fakeReq('/__pointcut/agent', 'POST', { agent: 'fake', markdown: 'm', images: [PNG] }),
-    res,
-  );
+  handler(fakeReq('/__pointcut/agent', 'POST', { agent: 'fake', markdown: 'm' }), res);
   await tick();
-
-  // A temp PNG was decoded and named into buildArgs' shots.
-  assert.equal(driver.lastInput.shots.length, 1);
-  const tmpFile = driver.lastInput.shots[0].file;
-  const fs = await import('node:fs');
-  assert.equal(fs.existsSync(tmpFile), true, 'temp PNG written');
 
   // Simulate the client hanging up.
   res.emit('close');
   await tick();
   assert.equal(child.killed, true, 'child killed on disconnect');
-  assert.equal(fs.existsSync(tmpFile), false, 'temp PNG cleaned up on disconnect');
 });
 
 test('createAgentRun: unknown agent → 404, no spawn', async () => {

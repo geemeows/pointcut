@@ -1,21 +1,21 @@
 // @pointcut/core — agent-run, the spawn-and-stream half of the Bridge.
 //
-// POST a Turn here ({ agent, markdown, images, resume, model, mode }) and the
-// Bridge: decodes the screenshot data-URLs to temp PNGs, asks the chosen Driver
-// to build the CLI argv, spawns that CLI (stdin ignored), then reads its
-// newline-delimited JSON stdout — buffering partial lines across chunks — and
-// normalizes each native event through `driver.parse()` into Actions. Each Turn
-// streams back as uniform NDJSON: {t:'action',a} | {t:'error',m} | {t:'end',code}.
+// POST a Turn here ({ agent, markdown, resume, model, mode }) and the Bridge
+// asks the chosen Driver to build the CLI argv, spawns that CLI (stdin ignored),
+// then reads its newline-delimited JSON stdout — buffering partial lines across
+// chunks — and normalizes each native event through `driver.parse()` into
+// Actions. Each Turn streams back as uniform NDJSON:
+// {t:'action',a} | {t:'error',m} | {t:'end',code}.
 //
 // The wire protocol is agent-agnostic on purpose (CONTEXT.md / the Driver ADR):
 // the client never sees a raw CLI event, only Actions. On client disconnect we
-// kill the child AND clean up the temp PNGs, so an abandoned run leaves nothing.
+// kill the child, so an abandoned run leaves nothing.
 //
 // `X-Accel-Buffering:no` defeats proxy buffering so Actions arrive incrementally;
 // `X-Content-Type-Options:nosniff` keeps the NDJSON from being content-sniffed.
 import { spawn as nodeSpawn } from 'node:child_process';
 import { getDriver } from '../drivers/registry.mjs';
-import { readJsonBody, writeShots, cleanupShots } from './shared.mjs';
+import { readJsonBody } from './shared.mjs';
 
 // Pump a child's stdout: split on '\n', carry the trailing partial across reads,
 // parse each complete line as JSON, and feed it to `onEvent`. Non-JSON lines are
@@ -85,7 +85,7 @@ export function createAgentRun({
       });
 
     const run = async (turn) => {
-      const { agent, markdown = '', images, resume = null, model = '', mode = 'apply' } = turn || {};
+      const { agent, markdown = '', resume = null, model = '', mode = 'apply' } = turn || {};
       if (agents && agents.length && !agents.includes(agent)) {
         res.statusCode = 403;
         res.end('agent not allowed');
@@ -105,16 +105,8 @@ export function createAgentRun({
       res.setHeader('X-Content-Type-Options', 'nosniff');
       const write = (obj) => res.write(JSON.stringify(obj) + '\n');
 
-      // Decode screenshots to temp PNGs, then build argv + spawn the CLI.
-      const written = await writeShots(images, {});
-      const args = driver.buildArgs({ markdown, shots: written.shots, resume, model, mode });
-
-      let cleaned = false;
-      const cleanup = () => {
-        if (cleaned) return;
-        cleaned = true;
-        return cleanupShots(written, {});
-      };
+      // Build argv + spawn the CLI.
+      const args = driver.buildArgs({ markdown, resume, model, mode });
 
       let child;
       try {
@@ -123,7 +115,6 @@ export function createAgentRun({
         write({ t: 'error', m: String((err && err.message) || err) });
         write({ t: 'end', code: 1 });
         res.end();
-        await cleanup();
         return;
       }
 
@@ -138,21 +129,19 @@ export function createAgentRun({
         if (m) write({ t: 'error', m });
       });
       child.on('error', (err) => write({ t: 'error', m: String((err && err.message) || err) }));
-      child.on('close', async (code) => {
+      child.on('close', (code) => {
         buffer.flush();
         write({ t: 'end', code: code == null ? 0 : code });
         res.end();
-        await cleanup();
       });
 
-      // Client disconnect: kill the child AND clean up the temp PNGs.
+      // Client disconnect: kill the child.
       const onClose = () => {
         try {
           child.kill();
         } catch (_) {
           /* already gone */
         }
-        cleanup();
       };
       res.on('close', onClose);
     };

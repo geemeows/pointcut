@@ -55,20 +55,8 @@ export const interpretClaudeEvent = (e) => {
   return [];
 };
 
-// Compose the prompt: the toolbar's markdown handoff, the screenshot file list
-// (Claude reads images from the paths named in the prompt), then the directive.
-const buildPrompt = (markdown, shots, mode) => {
-  const parts = [markdown.trim()];
-  if (shots.length) {
-    parts.push(
-      '## Screenshots\n' +
-        shots.map(({ n, file }) => `- Item ${n}: ${file}`).join('\n') +
-        '\n\nRead each screenshot above to see the actual rendered element.',
-    );
-  }
-  parts.push(directiveForMode(mode));
-  return parts.join('\n\n');
-};
+// Compose the prompt: the toolbar's markdown handoff, then the directive.
+const buildPrompt = (markdown, mode) => [markdown.trim(), directiveForMode(mode)].join('\n\n');
 
 export const claude = {
   command: 'claude',
@@ -89,9 +77,9 @@ export const claude = {
   // writes nothing in a --print run). cwd is the project root so the repo is in
   // scope. stream-json + --verbose is the only combo that emits incremental
   // events under --print. A resume session id continues the conversation.
-  buildArgs({ markdown, shots, resume, model, mode }) {
+  buildArgs({ markdown, resume, model, mode }) {
     const args = [
-      '-p', buildPrompt(markdown, shots, mode),
+      '-p', buildPrompt(markdown, mode),
       '--output-format', 'stream-json', '--verbose',
       '--include-partial-messages', // stream assistant prose token-by-token
       '--permission-mode', isWriteMode(mode) ? 'acceptEdits' : 'plan',

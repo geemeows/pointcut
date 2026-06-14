@@ -87,23 +87,18 @@ test('cursor.models is a function (resolved live by the Bridge)', () => {
 });
 
 test('cursor.buildArgs: stream-json + force, resume/model appended when present', () => {
-  const base = cursor.buildArgs({ markdown: 'do x', shots: [], resume: null, model: '' });
+  const base = cursor.buildArgs({ markdown: 'do x', resume: null, model: '' });
   assert.equal(base[0], '-p');
   assert.ok(base.includes('stream-json') && base.includes('--force'));
   assert.ok(!base.includes('--resume') && !base.includes('--model'));
-  const full = cursor.buildArgs({ markdown: 'do x', shots: [], resume: 'sess1', model: 'auto' });
+  const full = cursor.buildArgs({ markdown: 'do x', resume: 'sess1', model: 'auto' });
   assert.deepEqual(full.slice(-4), ['--model', 'auto', '--resume', 'sess1']);
 });
 
 test('cursor.buildArgs: discuss mode drops --force and uses the non-writing directive', () => {
-  const disc = cursor.buildArgs({ markdown: 'do x', shots: [], resume: null, mode: 'discuss' });
+  const disc = cursor.buildArgs({ markdown: 'do x', resume: null, mode: 'discuss' });
   assert.ok(!disc.includes('--force'));
   assert.match(disc[1], /Do not edit any files/);
   // apply-once keeps the write posture
-  assert.ok(cursor.buildArgs({ markdown: 'do x', shots: [], resume: null, mode: 'apply-once' }).includes('--force'));
-});
-
-test('cursor.buildArgs: screenshot paths are listed in the prompt', () => {
-  const args = cursor.buildArgs({ markdown: 'do x', shots: [{ n: 1, file: '/tmp/a.png' }], resume: null });
-  assert.match(args[1], /\/tmp\/a\.png/);
+  assert.ok(cursor.buildArgs({ markdown: 'do x', resume: null, mode: 'apply-once' }).includes('--force'));
 });
