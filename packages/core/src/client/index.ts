@@ -396,52 +396,59 @@ export function mount() {
       .dsend[disabled] { background: rgba(182,250,5,.3); color: rgba(24,26,14,.5); cursor: not-allowed; }
       .dsend svg { width: 16px; height: 16px; display: block; }
       .crow {
-        background: #1d1e21; border: 1px solid rgba(255,255,255,.06); border-radius: 14px;
-        padding: 10px 12px; display: flex; flex-direction: column; gap: 10px; cursor: pointer;
-        transition: border-color .12s, background .12s, transform .12s;
+        position: relative; background: #1a1b1e; border: 1px solid rgba(255,255,255,.07); border-radius: 16px;
+        padding: 12px 14px 14px; display: flex; flex-direction: column; gap: 12px;
+        transition: border-color .12s, background .12s;
       }
-      .crow:hover { border-color: rgba(255,255,255,.16); background: #212327; }
-      .crow.collapsed { gap: 0; }
-      .crow.collapsed .crow-detail { display: none; }
-      .crow-detail { display: flex; flex-direction: column; gap: 10px; padding-top: 4px; }
-      .crow-caret { width: 14px; height: 14px; opacity: .4; flex: none; transition: transform .15s, opacity .12s; }
-      .crow:hover .crow-caret { opacity: .7; }
-      .crow.collapsed .crow-caret { transform: rotate(-90deg); }
-      .crow-top { display: flex; align-items: center; gap: 10px; }
+      /* Brand accent rail down the left edge — the card's identity marker. */
+      .crow::before {
+        content: ''; position: absolute; left: 0; top: 12px; bottom: 12px; width: 3px;
+        border-radius: 0 3px 3px 0; background: var(--pc-accent); box-shadow: 0 0 10px rgba(182,250,5,.55);
+      }
+      .crow:hover { border-color: rgba(255,255,255,.14); background: #1d1e22; }
+      .crow-detail { display: flex; flex-direction: column; gap: 8px; }
+      .crow-top { display: flex; align-items: center; gap: 8px; }
+      /* Checkbox + number fused into one brand-tinted pill. */
+      .crow-idgrp {
+        display: inline-flex; align-items: center; gap: 8px; flex: none;
+        padding: 5px 8px; border-radius: 11px;
+        background: rgba(182,250,5,.07); border: 1px solid rgba(182,250,5,.28);
+      }
       .crow-num {
-        width: 22px; height: 22px; border-radius: 50% 50% 50% 2px; background: var(--pc-accent); color: var(--pc-ink);
+        width: 22px; height: 22px; border-radius: 6px; background: var(--pc-accent); color: var(--pc-ink);
         font-size: 12px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex: none;
         border: 1.5px solid #fff;
       }
-      .crow-top .src { margin-bottom: 0; min-width: 0; flex: 1; }
-      /* Per-row edit/delete — quiet until the row is hovered, so collapsed rows scan clean. */
-      .crow-tools { display: flex; gap: 2px; flex: none; opacity: 0; transition: opacity .12s; }
+      .crow-top .src { margin-bottom: 0; min-width: 0; flex: 1; border: 1px solid rgba(255,255,255,.1); }
+      /* Labeled Edit / Dismiss buttons — quiet until the row is hovered. */
+      .crow-tools { display: flex; gap: 6px; flex: none; opacity: 0; transition: opacity .12s; }
       .crow:hover .crow-tools, .crow:focus-within .crow-tools { opacity: 1; }
       .crow-act {
-        all: unset; box-sizing: border-box; cursor: pointer; position: relative; flex: none;
-        display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px;
-        border-radius: 7px; color: #8b93a1; transition: background .12s, color .12s;
+        all: unset; box-sizing: border-box; cursor: pointer; flex: none;
+        display: inline-flex; align-items: center; gap: 6px; padding: 6px 11px;
+        border-radius: 9px; font-size: 12px; font-weight: 600;
+        color: var(--pc-accent); border: 1px solid rgba(182,250,5,.3); background: rgba(182,250,5,.06);
+        transition: background .12s, border-color .12s, color .12s;
       }
-      .crow-act svg { width: 15px; height: 15px; }
-      .crow-act:hover { background: #2a2c30; color: #e7e9ee; }
-      .crow-act.danger:hover { background: rgba(255,90,90,.12); color: #ff8d8d; }
-      .crow-act[data-tip]::after {
-        content: attr(data-tip); position: absolute; bottom: calc(100% + 6px); left: 50%;
-        transform: translateX(-50%) translateY(2px);
-        background: #0c0d0f; color: #fff; font-size: 11px; font-weight: 500; line-height: 1;
-        padding: 5px 8px; border-radius: 6px; white-space: nowrap; opacity: 0; pointer-events: none;
-        transition: opacity .12s, transform .12s; box-shadow: 0 4px 14px rgba(0,0,0,.45);
-      }
-      .crow-act:hover::after { opacity: 1; transform: translateX(-50%) translateY(0); }
-      /* Titled blockquote comment (popover + drawer rows) */
+      .crow-act svg { width: 14px; height: 14px; }
+      .crow-act:hover { background: rgba(182,250,5,.14); border-color: rgba(182,250,5,.5); }
+      .crow-act.danger { color: #ff8d8d; border-color: rgba(255,90,90,.3); background: rgba(255,90,90,.06); }
+      .crow-act.danger:hover { background: rgba(255,90,90,.14); border-color: rgba(255,90,90,.5); color: #ffa3a3; }
+      /* Titled comment block — popover keeps the left-rail blockquote look. */
       .comment-title {
         font-size: 11px; font-weight: 600; letter-spacing: .03em; text-transform: uppercase;
         color: #8b93a1; margin-bottom: 6px;
       }
-      .body, .crow-body {
+      .body {
         margin: 0; font-size: 13px; line-height: 1.5; white-space: pre-wrap; word-break: break-word;
         color: #e7e9ee; border-left: 3px solid rgba(255,255,255,.16); background: rgba(255,255,255,.035);
         border-radius: 0 7px 7px 0; padding: 8px 11px;
+      }
+      /* Drawer comment box — full bordered field, matching the mockup. */
+      .crow-body {
+        margin: 0; font-size: 14px; line-height: 1.5; white-space: pre-wrap; word-break: break-word;
+        color: #e7e9ee; border: 1px solid rgba(255,255,255,.1); background: rgba(255,255,255,.02);
+        border-radius: 10px; padding: 11px 13px; min-height: 22px;
       }
       .panel {
         position: fixed; pointer-events: auto; display: none;
@@ -973,7 +980,6 @@ export function mount() {
   let openTextMsg = null; // the .msg node currently accumulating streamed prose deltas
   let openTextBuf = ''; // its accumulated text so far
   let selectedIds = []; // comments @-referenced in the composer, in insertion order (default = none)
-  const expandedIds = new Set(); // comment cards expanded in the drawer (default = collapsed)
   let sentIds = []; // ids dispatched in the current run — removed on success
   let pending = null; // what we're about to annotate: {el} | {region} | {editId}
   // Active spacing-control session for the open note: the model session, the
@@ -2138,18 +2144,19 @@ export function mount() {
     drawerList.innerHTML = '';
     Q.all().forEach((a, i) => {
       const row = document.createElement('div');
-      row.className = 'crow' + (expandedIds.has(a.id) ? '' : ' collapsed');
+      row.className = 'crow';
       row.dataset.id = a.id;
       row.innerHTML =
         `<div class="crow-top">` +
+        `<div class="crow-idgrp">` +
         `<input type="checkbox" class="crow-check" data-act="drow-select"${Q.isSelected(a.id) ? ' checked' : ''} title="Include when sending" />` +
         `<span class="crow-num">${i + 1}</span>` +
+        `</div>` +
         `<div class="src"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg><span class="src-name"></span></div>` +
         `<div class="crow-tools">` +
-        `<button class="crow-act" data-act="drow-edit" data-tip="Edit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></button>` +
-        `<button class="crow-act danger" data-act="drow-delete" data-tip="Delete"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M10 11v6M14 11v6"/></svg></button>` +
+        `<button class="crow-act" data-act="drow-edit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg><span>Edit</span></button>` +
+        `<button class="crow-act danger" data-act="drow-delete"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M10 11v6M14 11v6"/></svg><span>Dismiss</span></button>` +
         `</div>` +
-        `<svg class="crow-caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>` +
         `</div>` +
         `<div class="crow-detail">` +
         `<div class="comment"><div class="comment-title">Comment</div><blockquote class="crow-body"></blockquote></div>` +
@@ -2412,10 +2419,6 @@ export function mount() {
       }
       return;
     }
-    // Clicking anywhere else on the card toggles its expanded detail.
-    if (expandedIds.has(id)) expandedIds.delete(id);
-    else expandedIds.add(id);
-    row.classList.toggle('collapsed', !expandedIds.has(id));
   });
 
   note.addEventListener('click', (e) => {
