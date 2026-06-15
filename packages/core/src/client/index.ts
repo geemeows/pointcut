@@ -293,7 +293,7 @@ export function mount() {
          with an "Apply changes" toggle. Hidden until the Chat tab is active. */
       .chat-pane { display: none; flex: 1 1 0; min-height: 0; flex-direction: column; }
       .drawer.tab-chat .chat-pane { display: flex; }
-      .drawer.tab-chat .drawer-list, .drawer.tab-chat .drawer-stream, .drawer.tab-chat .drawer-composer { display: none; }
+      .drawer.tab-chat .drawer-list, .drawer.tab-chat .drawer-stream, .drawer.tab-chat .drawer-actions, .drawer.tab-chat .add-note-box { display: none; }
       .chat-stream { flex: 1 1 0; min-height: 0; overflow-y: auto; padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; }
       .chat-empty { opacity: .5; text-align: center; padding: 48px 16px; font-size: 13px; line-height: 1.6; }
       .chat-composer { flex: none; position: relative; border-top: 1px solid rgba(255,255,255,.08); padding: 12px; }
@@ -450,6 +450,93 @@ export function mount() {
         color: #e7e9ee; border: 1px solid rgba(255,255,255,.1); background: rgba(255,255,255,.02);
         border-radius: 10px; padding: 11px 13px; min-height: 22px;
       }
+      /* ---- Comments tab revamp ------------------------------------------- */
+      /* Top action bar (replaces the old foot composer): selection count, Add
+         note, and Send to agent. Sits above the scrolling list, and only shows
+         once at least one comment is checked. */
+      .drawer-actions {
+        flex: none; display: none; align-items: center; gap: 8px; padding: 10px 12px;
+        border-bottom: 1px solid rgba(255,255,255,.08);
+      }
+      .drawer-actions.show { display: flex; }
+      .drawer-actions .sel-info { font-size: 12px; color: #8b93a1; }
+      .actbtn {
+        all: unset; box-sizing: border-box; cursor: pointer; margin-left: auto;
+        font-size: 12px; font-weight: 600; color: #cfd5df; padding: 7px 11px; border-radius: 9px;
+        transition: background .12s, color .12s;
+      }
+      .actbtn:hover { background: rgba(255,255,255,.07); color: #fff; }
+      .send-claude {
+        all: unset; box-sizing: border-box; cursor: pointer; flex: none; display: inline-flex;
+        align-items: center; gap: 7px; padding: 7px 12px; border-radius: 10px;
+        background: var(--pc-accent); color: var(--pc-ink); font-size: 12px; font-weight: 600;
+        transition: background .12s;
+      }
+      .send-claude:hover { background: var(--pc-accent-hover); }
+      .send-claude[disabled] { background: rgba(182,250,5,.3); color: rgba(24,26,14,.5); cursor: not-allowed; }
+      .send-claude svg { width: 14px; height: 14px; display: block; }
+      /* Add-note input — drops below the action bar when "Add note" is clicked. */
+      .add-note-box { flex: none; display: none; flex-direction: column; gap: 8px; padding: 10px 12px; border-bottom: 1px solid rgba(255,255,255,.08); }
+      .add-note-box.open { display: flex; }
+      .add-note-box.collapsed { display: none; }
+      .mini-input {
+        width: 100%; box-sizing: border-box; min-height: 54px; max-height: 140px; resize: none;
+        background: #11141a; color: #fff; border: 1px solid #2b313c; border-radius: 10px;
+        padding: 8px 9px; font: inherit; font-size: 13px;
+      }
+      .mini-input:focus { outline: none; border-color: var(--pc-accent); box-shadow: 0 0 0 3px rgba(182,250,5,.22); }
+      .mini-actions { display: flex; gap: 8px; justify-content: flex-end; }
+      .mini-btn {
+        all: unset; box-sizing: border-box; cursor: pointer; padding: 7px 13px; border-radius: 9px;
+        font-size: 12px; font-weight: 600; background: var(--pc-accent); color: var(--pc-ink);
+        transition: background .12s;
+      }
+      .mini-btn:hover { background: var(--pc-accent-hover); }
+      .mini-btn[disabled] { opacity: .4; cursor: not-allowed; }
+      .mini-btn.ghost { background: #2a2c30; color: #e7e9ee; }
+      .mini-btn.ghost:hover { background: #363940; }
+      /* Source chip sits between head and body — drop its standalone margin so
+         the card's column gap is the only spacing. */
+      .crow .src { margin-bottom: 0; align-self: flex-start; max-width: 100%; }
+      /* Comment card head — author + relative time on the left, Resolve on the right. */
+      .crow-head { display: flex; align-items: center; gap: 8px; }
+      .crow-author { font-size: 13px; font-weight: 700; color: #fff; }
+      .crow-time { font-size: 11px; color: #8b93a1; }
+      .crow-resolve {
+        all: unset; box-sizing: border-box; cursor: pointer; margin-left: auto; flex: none;
+        display: inline-flex; align-items: center; gap: 7px; font-size: 12px; color: #8b93a1;
+        transition: color .12s;
+      }
+      .crow-resolve:hover { color: #e7e9ee; }
+      .crow-resolve-box {
+        width: 16px; height: 16px; border-radius: 4px; border: 1.5px solid rgba(255,255,255,.28);
+        display: inline-flex; align-items: center; justify-content: center; flex: none; position: relative;
+      }
+      .crow-resolve:hover .crow-resolve-box { border-color: rgba(255,255,255,.5); }
+      .crow-resolve-box.on { background: var(--pc-accent); border-color: var(--pc-accent); }
+      .crow-resolve-box.on::after {
+        content: ''; position: absolute; left: 4.5px; top: 1.5px; width: 4px; height: 8px;
+        border: solid var(--pc-ink); border-width: 0 2px 2px 0; transform: rotate(45deg);
+      }
+      .crow.selected { border-color: rgba(182,250,5,.4); }
+      /* Reply affordance + the per-card reply input (revealed on click). */
+      .crow-reply {
+        all: unset; box-sizing: border-box; cursor: pointer; align-self: flex-start;
+        font-size: 12px; font-weight: 600; color: #8b93a1; transition: color .12s;
+      }
+      .crow-reply:hover { color: var(--pc-accent); }
+      .crow.reply-open .crow-reply { display: none; }
+      .crow-reply-box { display: none; flex-direction: column; gap: 6px; }
+      .crow.reply-open .crow-reply-box { display: flex; }
+      .crow-reply-box .mini-input { min-height: 38px; }
+      /* Threaded replies under a comment. */
+      .crow-replies { display: flex; flex-direction: column; gap: 8px; }
+      .crow-replies:empty { display: none; }
+      .reply { display: flex; flex-direction: column; gap: 3px; padding-left: 11px; border-left: 2px solid rgba(255,255,255,.12); }
+      .reply-head { display: flex; align-items: center; gap: 7px; }
+      .reply-author { font-size: 12px; font-weight: 700; color: #e7e9ee; }
+      .reply-time { font-size: 10px; color: #8b93a1; }
+      .reply-body { font-size: 13px; line-height: 1.5; color: #cfd5df; white-space: pre-wrap; word-break: break-word; }
       .panel {
         position: fixed; pointer-events: auto; display: none;
         background: #1b1d21; color: #fff; padding: 14px; border-radius: 14px;
@@ -798,6 +885,17 @@ export function mount() {
           <button class="dtab active" data-act="tab" data-tab="comments">Comments</button>
           <button class="dtab" data-act="tab" data-tab="chat">Chat</button>
         </div>
+        <div class="drawer-actions">
+          <span class="sel-info"></span>
+          <button class="actbtn" data-act="add-note">Add note</button>
+          <button class="send-claude" data-act="comments-send" title="Send to agent">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4 20-7z"/></svg>
+            <span>Send to agent</span>
+          </button>
+        </div>
+        <div class="add-note-box">
+          <textarea class="mini-input" placeholder="How should the agent apply these? (optional)"></textarea>
+        </div>
         <div class="drawer-list"></div>
         <div class="drawer-stream"></div>
         <div class="chat-pane">
@@ -823,28 +921,6 @@ export function mount() {
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4 20-7z"/></svg>
                 </button>
               </div>
-            </div>
-          </div>
-        </div>
-        <div class="drawer-composer">
-          <div class="mention-pop"></div>
-          <span class="cstatus"><span class="cstat-logo">${AGENT_ICON}</span><span class="cstat-text"></span></span>
-          <div class="composer-box">
-            <div class="composer-chips"></div>
-            <textarea placeholder="Message agent…  (@ to reference a comment · ⌘/Ctrl+Enter to send)"></textarea>
-            <div class="composer-bar">
-              <span class="sel-info"></span>
-              <div class="agent-pick sm right">
-                <button class="agent-trigger" data-act="agent-toggle" title="Coding agent" aria-label="Coding agent">
-                  <svg class="agent-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="16" height="16" x="4" y="4" rx="2"/><rect width="6" height="6" x="9" y="9" rx="1"/><path d="M15 2v2"/><path d="M15 20v2"/><path d="M2 15h2"/><path d="M2 9h2"/><path d="M20 15h2"/><path d="M20 9h2"/><path d="M9 2v2"/><path d="M9 20v2"/></svg>
-                  <span class="agent-trigger-label"></span>
-                  <svg class="agent-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
-                </button>
-                <div class="agent-menu"></div>
-              </div>
-              <button class="dsend" data-act="composer-send" title="Send to agent">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4 20-7z"/></svg>
-              </button>
             </div>
           </div>
         </div>
@@ -920,10 +996,9 @@ export function mount() {
   const drawerTabs = $('.drawer-tabs');
   const cpanel = $('.cpanel');
   const cpanelLog = $('.cpanel .clog');
-  // Each surface is independent: a run streams into the drawer OR the floating
-  // panel, never both. `surface` ({ log, status }) is set per run to the chosen
-  // one, so cLog/setStatus write only there.
-  const drawerStatus = $('.drawer-composer .cstatus');
+  // Each surface is independent: a run streams into the chat transcript OR the
+  // floating panel, never both. `surface` ({ log, status }) is set per run to
+  // the chosen one, so cLog/setStatus write only there.
   const panelStatus = $('.cpanel .cstatus');
   // Chat tab (0010): its own transcript surface + composer.
   const chatStream = $('.chat-stream');
@@ -939,11 +1014,13 @@ export function mount() {
   let selectedAgent = null;
   let selectedModel = '';
   let availableAgents = [];
-  const composerText = $('.drawer-composer textarea');
-  const composerSend = $('.drawer-composer [data-act="composer-send"]');
-  const composerChips = $('.composer-chips');
-  const mentionPop = $('.mention-pop');
-  const selInfo = $('.drawer-composer .sel-info');
+  // Comments-tab top action bar (replaces the old foot composer).
+  const drawerActions = $('.drawer-actions');
+  const selInfo = $('.drawer-actions .sel-info');
+  const commentsSend = $('.drawer-actions [data-act="comments-send"]');
+  const addNoteBtn = $('.drawer-actions [data-act="add-note"]');
+  const addNoteBox = $('.add-note-box');
+  const addNoteText = $('.add-note-box textarea');
 
   const note = $('.note');
   const noteSrc = note.querySelector('.src');
@@ -979,8 +1056,9 @@ export function mount() {
   let agentStartAt = 0; // run start timestamp, for the "Brewed for …" elapsed time
   let openTextMsg = null; // the .msg node currently accumulating streamed prose deltas
   let openTextBuf = ''; // its accumulated text so far
-  let selectedIds = []; // comments @-referenced in the composer, in insertion order (default = none)
-  let sentIds = []; // ids dispatched in the current run — removed on success
+  let sentIds = []; // ids dispatched in the current panel run — removed on success
+  let selectedIds = []; // comments checked in the Comments tab (default none); drives the action bar
+  let pendingResolveIds = []; // comments handed to Chat via "Send to agent" — deleted on success
   let pending = null; // what we're about to annotate: {el} | {region} | {editId}
   // Active spacing-control session for the open note: the model session, the
   // property, and the element's original inline value so a cancel restores it.
@@ -1020,6 +1098,22 @@ export function mount() {
     srcEl.title = loc || 'source unknown';
     srcEl.classList.toggle('linkable', linkable);
     srcEl.dataset.loc = loc || '';
+  };
+
+  // Coarse relative timestamp for a comment ("just now", "21h ago"). Comments
+  // predating the createdAt field (legacy records) show no time.
+  const relTime = (ts) => {
+    if (!ts) return '';
+    const s = Math.round((Date.now() - ts) / 1000);
+    if (s < 45) return 'just now';
+    const m = Math.round(s / 60);
+    if (m < 60) return `${m}m ago`;
+    const h = Math.round(m / 60);
+    if (h < 24) return `${h}h ago`;
+    const d = Math.round(h / 24);
+    if (d < 7) return `${d}d ago`;
+    const w = Math.round(d / 7);
+    return `${w}w ago`;
   };
 
   const refreshCount = () => {
@@ -1432,6 +1526,7 @@ export function mount() {
     const id = Q.newId();
     const a = {
       id, type: selectedType, comment,
+      author: 'You', createdAt: Date.now(), replies: [],
       loc: '', path: null, label: '', outerHTML: '', styles: {}, region: null,
     };
     if (pending && pending.el) {
@@ -1602,103 +1697,23 @@ export function mount() {
     }
     box.scrollTop = box.scrollHeight;
   };
-  const selectedAnnotations = () => selectedIds.map((id) => Q.get(id)).filter(Boolean);
-  // What the composer Send dispatches: the checked queue subset (0008, default
-  // all) unioned with any @-mentioned comments, deduped and in queue order.
-  const composerDispatch = () => {
-    const ids = new Set(selectedIds);
-    Q.selectedItems().forEach((a) => ids.add(a.id));
-    return Q.all().filter((a) => ids.has(a.id));
-  };
-  // One chip per @-referenced comment, shown inside the composer box.
-  const renderChips = () => {
-    composerChips.innerHTML = '';
-    selectedAnnotations().forEach((a) => {
-      const chip = document.createElement('span');
-      chip.className = 'chip';
-      chip.dataset.id = a.id;
-      chip.title = `${a.loc || 'source unknown'} — ${a.comment}`;
-      chip.innerHTML =
-        `<span class="chip-num">${Q.indexOf(a) + 1}</span>` +
-        `<span class="chip-lbl">${escHtml(a.comment || '(no comment)')}</span>` +
-        `<button class="chip-x" data-act="chip-remove" title="Remove">×</button>`;
-      composerChips.appendChild(chip);
-    });
-  };
-  const updateComposerState = () => {
-    selectedIds = selectedIds.filter((id) => Q.get(id)); // drop references to deleted comments
-    const n = composerDispatch().length;
-    const hasNote = composerText.value.trim().length > 0;
-    composerSend.disabled = agentRunning || !selectedAgent || (n === 0 && !hasNote);
-    selInfo.textContent = n ? `${n} selected` : '';
-    renderChips();
+  // Comments-tab top action bar: checking comments selects them; the bar appears
+  // only once something is selected, and its count drives "Send to agent".
+  const updateCommentsActions = () => {
+    selectedIds = selectedIds.filter((id) => Q.get(id)); // drop deleted comments
+    const n = selectedIds.length;
+    drawerActions.classList.toggle('show', n > 0 && !listCollapsed);
+    if (!n) addNoteBox.classList.remove('open'); // nothing selected → no note input
+    selInfo.textContent = `${n} selected`;
+    commentsSend.disabled = agentRunning || !selectedAgent || n === 0;
   };
 
-  // ---- "@" comment picker --------------------------------------------------
-  // Typing "@" (at start or after whitespace) opens a dropdown of un-referenced
-  // comments; picking one strips the "@query" and adds the comment as a chip.
-  let mentionList = [];
-  let mentionActive = 0;
-  const mentionIsOpen = () => mentionPop.classList.contains('open');
-  const mentionCtx = () => {
-    const caret = composerText.selectionStart;
-    const m = /(?:^|\s)@([^\s@]*)$/.exec(composerText.value.slice(0, caret));
-    return m ? { at: caret - m[1].length - 1, caret, query: m[1].toLowerCase() } : null;
-  };
-  const renderMention = () => {
-    if (!mentionList.length) {
-      mentionPop.innerHTML = '<div class="mention-empty">No comments to reference</div>';
-      return;
-    }
-    mentionPop.innerHTML = mentionList
-      .map((a, i) => {
-        const src = a.loc ? a.loc.split('/').pop() : '';
-        return (
-          `<button class="mitem${i === mentionActive ? ' active' : ''}" data-id="${a.id}">` +
-          `<span class="mitem-num">${Q.indexOf(a) + 1}</span>` +
-          `<span class="mitem-text">${escHtml(a.comment || '(no comment)')}</span>` +
-          (src ? `<span class="mitem-src">${escHtml(src)}</span>` : '') +
-          `</button>`
-        );
-      })
-      .join('');
-  };
-  const openMention = (query) => {
-    const taken = new Set(selectedIds);
-    mentionList = Q.all().filter(
-      (a) =>
-        !taken.has(a.id) &&
-        (!query ||
-          (a.comment || '').toLowerCase().includes(query) ||
-          (a.loc || '').toLowerCase().includes(query)),
-    );
-    mentionActive = 0;
-    renderMention();
-    mentionPop.classList.add('open');
-  };
-  const closeMention = () => {
-    mentionPop.classList.remove('open');
-    mentionList = [];
-  };
-  const pickMention = (a) => {
-    const ctx = mentionCtx();
-    if (ctx) {
-      const v = composerText.value;
-      composerText.value = v.slice(0, ctx.at) + v.slice(ctx.caret);
-      composerText.selectionStart = composerText.selectionEnd = ctx.at;
-    }
-    if (!selectedIds.includes(a.id)) selectedIds.push(a.id);
-    closeMention();
-    updateComposerState();
-    composerText.focus();
-  };
-  // Drop the comments dispatched in the just-finished run (success only).
+  // Drop the comments dispatched in the just-finished panel run (success only).
   const removeSent = () => {
     if (!sentIds.length) return;
     const ids = new Set(sentIds);
     Q.removeMany(ids);
     ids.forEach((id) => locator.forget(id));
-    selectedIds = selectedIds.filter((id) => !ids.has(id));
     sentIds = [];
     refreshCount();
     renderBubbles();
@@ -1781,13 +1796,13 @@ export function mount() {
     }
     stopThinking(agentErrored);
     sendBtn.disabled = Q.count() === 0 || !selectedAgent;
-    updateComposerState();
+    updateCommentsActions();
   };
 
   // Run a turn: dispatch the chosen comments (+ optional typed note) to the
   // bridge (agent-run.mjs) and stream the reply into one surface. Resumes the
   // prior session when one exists, so the composer reads as a conversation.
-  const runAgent = ({ annotations, note, surface: target }) => {
+  const runAgent = ({ annotations, note }) => {
     if (agentRunning || !selectedAgent) return;
     const anns = annotations || [];
     const text = (note || '').trim();
@@ -1797,11 +1812,11 @@ export function mount() {
     agentErrored = false;
     closeTextRow(); // fresh run — don't append onto a prior run's last line
     sendBtn.disabled = true;
-    composerSend.disabled = true;
-    // Stream into exactly one surface — the floating panel OR the drawer.
-    const onPanel = target === 'panel';
-    surface = onPanel ? { log: cpanelLog, status: panelStatus } : { log: stream, status: drawerStatus };
-    if (onPanel) cpanel.classList.add('open'); // drawer sends already have the drawer open
+    commentsSend.disabled = true;
+    // Single-comment / whole-queue sends from the bar + bubbles stream into the
+    // floating panel. (The Comments tab's "Send to agent" routes to Chat instead.)
+    surface = { log: cpanelLog, status: panelStatus };
+    cpanel.classList.add('open');
     agentStartAt = Date.now();
     startThinking();
     sentIds = anns.map((a) => a.id);
@@ -1828,18 +1843,8 @@ export function mount() {
     );
   };
 
-  // Bar "Send all" / ⌥G — whole queue, streams into the floating panel only.
-  const sendAll = () => runAgent({ annotations: Q.all().slice(), note: '', surface: 'panel' });
-  // Drawer composer — checked comments (∪ @-mentions) + note, streams into the
-  // drawer only.
-  const sendFromComposer = () => {
-    const note = composerText.value.trim();
-    const anns = composerDispatch();
-    if (agentRunning || (!anns.length && !note)) return;
-    runAgent({ annotations: anns, note, surface: 'drawer' });
-    composerText.value = '';
-    updateComposerState();
-  };
+  // Bar "Send all" / ⌥G — every comment, streams into the floating panel.
+  const sendAll = () => runAgent({ annotations: Q.all().slice(), note: '' });
 
   // ---- Chat tab (0010) -----------------------------------------------------
   // A continuous discuss session, separate from the Comments-tab runs above:
@@ -1927,19 +1932,36 @@ export function mount() {
     closeTextRow();
     if (reason) { agentErrored = true; cLog('err', '⚠', escHtml(reason)); chat.record({ k: 'err', m: reason }); }
     stopThinking(agentErrored);
+    // A successful comments→chat send resolves those comments: drop them from the
+    // queue, clear the selection + note. A failed run keeps them for a retry.
+    if (pendingResolveIds.length) {
+      if (!agentErrored) {
+        const ids = new Set(pendingResolveIds);
+        Q.removeMany(ids);
+        ids.forEach((id) => locator.forget(id));
+        selectedIds = selectedIds.filter((id) => !ids.has(id));
+        addNoteText.value = '';
+        addNoteBox.classList.remove('open');
+        refreshCount();
+        renderBubbles();
+        closePopover();
+      }
+      pendingResolveIds = [];
+    }
     sendBtn.disabled = Q.count() === 0 || !selectedAgent;
     chatStateUpdate();
-    updateComposerState();
+    updateCommentsActions();
   };
   const runChat = () => {
     const text = chatText.value.trim();
     const chips = chat.chips();
     if (agentRunning || !selectedAgent || (!text && !chips.length)) return;
+    pendingResolveIds = []; // a plain chat turn never resolves queued comments
     agentRunning = true;
     agentErrored = false;
     closeTextRow();
     sendBtn.disabled = true;
-    composerSend.disabled = true;
+    commentsSend.disabled = true;
     chatSend.disabled = true;
     surface = { log: chatStream, status: chatStatus };
     const empty = chatStream.querySelector('.chat-empty');
@@ -1979,6 +2001,50 @@ export function mount() {
       bridgeFetch,
     );
   };
+  // Comments-tab "Send to agent": hand the *selected* comments (+ an optional
+  // note on how to apply them) to the Chat tab and let the agent resolve them
+  // there (apply-once, so it edits the source this turn). Switches to Chat so
+  // the user watches the work stream into one continuous thread, reusing the
+  // chat session + finish/render path. The sent comments are deleted on success.
+  const sendCommentsToChat = () => {
+    const anns = selectedIds.map((id) => Q.get(id)).filter(Boolean);
+    if (agentRunning || !selectedAgent || !anns.length) return;
+    const noteText = addNoteText.value.trim();
+    selectTab('chat');
+    if (!drawerOpen) openDrawer();
+    agentRunning = true;
+    agentErrored = false;
+    closeTextRow();
+    sendBtn.disabled = true;
+    commentsSend.disabled = true;
+    chatSend.disabled = true;
+    surface = { log: chatStream, status: chatStatus };
+    const empty = chatStream.querySelector('.chat-empty');
+    if (empty) chatStream.innerHTML = ''; // first turn — drop the placeholder
+    agentStartAt = Date.now();
+    startThinking();
+    pendingResolveIds = anns.map((a) => a.id); // deleted once the run succeeds
+
+    const parts = ['Please resolve the following comments by editing the source:', toMarkdownFor(anns)];
+    if (noteText) parts.push('## How to apply\n' + noteText);
+    const markdown = parts.join('\n\n');
+    const summary = `${anns.length} comment${anns.length > 1 ? 's' : ''} to resolve` + (noteText ? ` — “${noteText}”` : '');
+    cLog('you', '›', escHtml(summary));
+    chat.record({ k: 'you', text: summary });
+
+    streamAgentRun(
+      { agent: selectedAgent, model: selectedModel, markdown, resume: chat.sessionId(), mode: 'apply-once' },
+      {
+        onAction: renderChatAction,
+        onBridgeError: (m) => { agentErrored = true; cLog('err', '⚠', escHtml(m)); chat.record({ k: 'err', m }); },
+        onBridgeEnd: () => finishChat(null),
+        onStreamEnd: () => finishChat(null),
+        onError: (m) => finishChat(m),
+      },
+      bridgeFetch,
+    );
+  };
+
   // Replay the persisted transcript into the stream (called once on init); an
   // empty thread shows a placeholder instead.
   const restoreChat = () => {
@@ -2133,39 +2199,66 @@ export function mount() {
 
 
   // ---- Comments drawer -----------------------------------------------------
+  // One card per comment: author + relative time, a select checkbox on the
+  // right, the comment body, any threaded replies, and a Reply affordance that
+  // reveals an inline reply box. Checking a comment selects it for "Send to
+  // agent"; the action bar appears once anything is selected.
   const renderDrawer = () => {
     drawerCount.textContent = Q.count() ? String(Q.count()) : '';
     if (!Q.count()) {
       drawerList.innerHTML =
         '<div class="drawer-empty">No comments yet.<br>Use Pick to annotate an element or region.</div>';
-      updateComposerState();
+      updateCommentsActions();
       return;
     }
     drawerList.innerHTML = '';
-    Q.all().forEach((a, i) => {
+    Q.all().forEach((a) => {
       const row = document.createElement('div');
       row.className = 'crow';
       row.dataset.id = a.id;
+      const hasLoc = !!a.loc;
+      const on = selectedIds.includes(a.id);
+      if (on) row.classList.add('selected');
       row.innerHTML =
-        `<div class="crow-top">` +
-        `<div class="crow-idgrp">` +
-        `<input type="checkbox" class="crow-check" data-act="drow-select"${Q.isSelected(a.id) ? ' checked' : ''} title="Include when sending" />` +
-        `<span class="crow-num">${i + 1}</span>` +
+        `<div class="crow-head">` +
+        `<span class="crow-author"></span>` +
+        `<span class="crow-time"></span>` +
+        `<button class="crow-resolve" data-act="crow-select" aria-pressed="${on ? 'true' : 'false'}" title="Select to send">` +
+        `<span>Resolve</span><span class="crow-resolve-box${on ? ' on' : ''}"></span>` +
+        `</button>` +
         `</div>` +
-        `<div class="src"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg><span class="src-name"></span></div>` +
-        `<div class="crow-tools">` +
-        `<button class="crow-act" data-act="drow-edit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg><span>Edit</span></button>` +
-        `<button class="crow-act danger" data-act="drow-delete"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M10 11v6M14 11v6"/></svg><span>Dismiss</span></button>` +
+        (hasLoc
+          ? `<div class="src"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg><span class="src-name"></span></div>`
+          : '') +
+        `<blockquote class="crow-body"></blockquote>` +
+        `<div class="crow-replies"></div>` +
+        `<button class="crow-reply" data-act="reply-open">Reply</button>` +
+        `<div class="crow-reply-box">` +
+        `<textarea class="mini-input" placeholder="Write a reply…  (⌘/Ctrl+Enter)"></textarea>` +
+        `<div class="mini-actions">` +
+        `<button class="mini-btn ghost" data-act="reply-cancel">Cancel</button>` +
+        `<button class="mini-btn" data-act="reply-send">Reply</button>` +
         `</div>` +
-        `</div>` +
-        `<div class="crow-detail">` +
-        `<div class="comment"><div class="comment-title">Comment</div><blockquote class="crow-body"></blockquote></div>` +
         `</div>`;
-      fillSrc(row.querySelector('.src'), a.loc);
+      row.querySelector('.crow-author').textContent = a.author || 'You';
+      row.querySelector('.crow-time').textContent = relTime(a.createdAt);
+      if (hasLoc) fillSrc(row.querySelector('.src'), a.loc);
       row.querySelector('.crow-body').textContent = a.comment;
+      const repliesEl = row.querySelector('.crow-replies');
+      (a.replies || []).forEach((r) => {
+        const rep = document.createElement('div');
+        rep.className = 'reply';
+        rep.innerHTML =
+          `<div class="reply-head"><span class="reply-author"></span><span class="reply-time"></span></div>` +
+          `<div class="reply-body"></div>`;
+        rep.querySelector('.reply-author').textContent = r.author || 'You';
+        rep.querySelector('.reply-time').textContent = relTime(r.createdAt);
+        rep.querySelector('.reply-body').textContent = r.text;
+        repliesEl.appendChild(rep);
+      });
       drawerList.appendChild(row);
     });
-    updateComposerState();
+    updateCommentsActions();
   };
 
   // Reflect the active tab onto the drawer (CSS shows/hides each pane) and the
@@ -2311,26 +2404,29 @@ export function mount() {
     });
   };
 
-  composerText.addEventListener('input', () => {
-    const ctx = mentionCtx();
-    if (ctx) openMention(ctx.query);
-    else closeMention();
-    updateComposerState();
+  // ---- Add-note (top action bar) -------------------------------------------
+  // "Add note" reveals an instruction box; its text rides along with the
+  // selected comments on "Send to agent" (guidance on how to apply them). The
+  // typed value is preserved while toggling, and cleared after a successful send.
+  const toggleAddNote = () => {
+    const open = !addNoteBox.classList.contains('open');
+    addNoteBox.classList.toggle('open', open);
+    if (open) addNoteText.focus();
+  };
+  addNoteText.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') { e.preventDefault(); addNoteBox.classList.remove('open'); }
+    else if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); sendCommentsToChat(); }
   });
-  composerText.addEventListener('keydown', (e) => {
-    if (mentionIsOpen()) {
-      if (e.key === 'Escape') { e.preventDefault(); closeMention(); return; }
-      if (mentionList.length) {
-        if (e.key === 'ArrowDown') { e.preventDefault(); mentionActive = (mentionActive + 1) % mentionList.length; renderMention(); return; }
-        if (e.key === 'ArrowUp') { e.preventDefault(); mentionActive = (mentionActive - 1 + mentionList.length) % mentionList.length; renderMention(); return; }
-        if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); pickMention(mentionList[mentionActive]); return; }
-      }
-    }
-    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
-      e.preventDefault();
-      sendFromComposer();
-    }
-  });
+
+  // Add a threaded reply to a comment, then re-render the list.
+  const addReply = (id, text) => {
+    const a = Q.get(id);
+    if (!a || !text) return;
+    if (!Array.isArray(a.replies)) a.replies = [];
+    a.replies.push({ author: 'You', text, createdAt: Date.now() });
+    Q.persist();
+    renderDrawer();
+  };
 
   chatText.addEventListener('input', chatStateUpdate);
   chatText.addEventListener('keydown', (e) => {
@@ -2350,8 +2446,12 @@ export function mount() {
       closeDrawer();
       return;
     }
-    if (e.target.closest('[data-act="composer-send"]')) {
-      sendFromComposer();
+    if (e.target.closest('[data-act="comments-send"]')) {
+      sendCommentsToChat(); // hand the selected comments to the Chat tab to resolve
+      return;
+    }
+    if (e.target.closest('[data-act="add-note"]')) {
+      toggleAddNote();
       return;
     }
     if (e.target.closest('[data-act="chat-send"]')) {
@@ -2373,12 +2473,8 @@ export function mount() {
       drawerList.classList.toggle('collapsed', listCollapsed);
       drawerTabs.classList.toggle('collapsed', listCollapsed);
       drawerHead.classList.toggle('collapsed', listCollapsed);
-      return;
-    }
-    const mitem = e.target.closest('.mitem');
-    if (mitem) {
-      const a = Q.get(mitem.dataset.id);
-      if (a) pickMention(a);
+      addNoteBox.classList.toggle('collapsed', listCollapsed);
+      updateCommentsActions(); // hides the action bar while minimized
       return;
     }
     const chatChipX = e.target.closest('[data-act="chat-chip-remove"]');
@@ -2388,37 +2484,56 @@ export function mount() {
       chatStateUpdate();
       return; // drop one context attachment before sending
     }
-    const chipX = e.target.closest('[data-act="chip-remove"]');
-    if (chipX) {
-      const id = chipX.closest('.chip').dataset.id;
-      selectedIds = selectedIds.filter((x) => x !== id);
-      updateComposerState();
-      return; // removing a chip just drops that reference
-    }
     const row = e.target.closest('.crow');
     if (!row) return;
     const id = row.dataset.id;
-    const check = e.target.closest('[data-act="drow-select"]');
-    if (check) {
-      Q.setSelected(id, check.checked); // include/exclude this item from Send
-      updateComposerState();
-      return; // don't toggle the card's expanded detail
+    // Select — check/uncheck this comment for "Send to agent" (in place, so the
+    // card's reply state survives). Selection drives the top action bar.
+    if (e.target.closest('[data-act="crow-select"]')) {
+      const i = selectedIds.indexOf(id);
+      if (i >= 0) selectedIds.splice(i, 1);
+      else selectedIds.push(id);
+      const on = selectedIds.includes(id);
+      const btn = row.querySelector('[data-act="crow-select"]');
+      btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+      btn.querySelector('.crow-resolve-box').classList.toggle('on', on);
+      row.classList.toggle('selected', on);
+      updateCommentsActions();
+      return;
+    }
+    // Reply — reveal the inline reply box, or commit / cancel it.
+    if (e.target.closest('[data-act="reply-open"]')) {
+      row.classList.add('reply-open');
+      const ta = row.querySelector('.crow-reply-box textarea');
+      if (ta) ta.focus();
+      return;
+    }
+    if (e.target.closest('[data-act="reply-cancel"]')) {
+      row.classList.remove('reply-open');
+      const ta = row.querySelector('.crow-reply-box textarea');
+      if (ta) ta.value = '';
+      return;
+    }
+    if (e.target.closest('[data-act="reply-send"]')) {
+      const ta = row.querySelector('.crow-reply-box textarea');
+      addReply(id, ta ? ta.value.trim() : '');
+      return;
     }
     const loc = e.target.closest('.src');
     if (loc && loc.classList.contains('linkable')) {
       openInEditor(loc.dataset.loc);
       return;
     }
-    const btn = e.target.closest('button[data-act]');
-    if (btn) {
-      if (btn.dataset.act === 'drow-edit') {
-        closeDrawer();
-        editAnnotation(id);
-      } else if (btn.dataset.act === 'drow-delete') {
-        deleteAnnotation(id);
-      }
-      return;
-    }
+  });
+  // ⌘/Ctrl+Enter inside a card's reply box commits the reply.
+  drawerList.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter' || !(e.metaKey || e.ctrlKey)) return;
+    const ta = e.target.closest('.crow-reply-box textarea');
+    if (!ta) return;
+    const row = ta.closest('.crow');
+    if (!row) return;
+    e.preventDefault();
+    addReply(row.dataset.id, ta.value.trim());
   });
 
   note.addEventListener('click', (e) => {
@@ -2477,7 +2592,8 @@ export function mount() {
   document.addEventListener('mouseup', onMouseUp, true);
   document.addEventListener('click', onClick, true);
   const isTyping = () => {
-    if (shadow.activeElement === noteText || shadow.activeElement === composerText) return true;
+    const sa = shadow.activeElement;
+    if (sa && (sa.tagName === 'TEXTAREA' || sa.tagName === 'INPUT')) return true;
     const el = document.activeElement;
     if (!el) return false;
     return (
@@ -2538,7 +2654,7 @@ export function mount() {
     '<svg class="agent-opt-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>';
   // Three instances — the bar, the drawer composer, and the chat composer —
   // share one selection; all reflect and drive the same selectedAgent/model.
-  const pickers = ['.bar .agent-pick', '.drawer-composer .agent-pick', '.chat-composer .agent-pick'].map((sel) => {
+  const pickers = ['.bar .agent-pick', '.chat-composer .agent-pick'].map((sel) => {
     const wrap = $(sel);
     return {
       wrap,
@@ -2573,7 +2689,7 @@ export function mount() {
     chat.setSession(null); // ditto for the chat thread — its resume id is stale under a new agent
     renderAllMenus();
     refreshCount();
-    updateComposerState();
+    updateCommentsActions();
     chatStateUpdate();
   };
   const applyAgents = (agents) => {
@@ -2587,7 +2703,7 @@ export function mount() {
     if (!availableAgents.length) sendBtn.dataset.tip = 'No coding-agent CLI found on PATH';
     renderAllMenus();
     refreshCount();
-    updateComposerState();
+    updateCommentsActions();
     chatStateUpdate();
   };
   pickers.forEach((p) => {
