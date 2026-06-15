@@ -67,7 +67,6 @@ export interface Driver {
   models: DriverModel[] | (() => Promise<DriverModel[]>);
   buildArgs(input: {
     markdown: string;
-    shots: Array<{ n: number; file: string }>;
     resume: string | null;
     model: string;
     mode: AgentMode;

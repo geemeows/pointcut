@@ -23,30 +23,23 @@ const base = {
   loc: 'app/x.vue:10:3',
   comment: 'make it blue',
   outerHTML: '',
-  screenshot: null,
 };
 
 test('blockFor renders type label, source and change', () => {
-  const md = blockFor(base, 2, false, TYPES);
+  const md = blockFor(base, 2, TYPES);
   assert.match(md, /### 2\. \[Color\] div\.card/);
   assert.match(md, /\*\*Source:\*\* `app\/x\.vue:10:3`/);
   assert.match(md, /\*\*Change:\*\* make it blue/);
 });
 
 test('unknown type falls back to the first type', () => {
-  const md = blockFor({ ...base, type: 'nope' }, 1, false, TYPES);
+  const md = blockFor({ ...base, type: 'nope' }, 1, TYPES);
   assert.match(md, /\[Layout\]/);
 });
 
 test('missing loc reads as unknown', () => {
-  const md = blockFor({ ...base, loc: '' }, 1, false, TYPES);
+  const md = blockFor({ ...base, loc: '' }, 1, TYPES);
   assert.match(md, /\*\*Source:\*\* `unknown`/);
-});
-
-test('screenshot: embed inlines a data url, otherwise a paste note', () => {
-  const withShot = { ...base, screenshot: 'data:image/png;base64,AAA' };
-  assert.match(blockFor(withShot, 3, true, TYPES), /!\[annotation 3\]\(data:image\/png/);
-  assert.match(blockFor(withShot, 3, false, TYPES), /paste image for item 3/);
 });
 
 test('spacing edit names the token, the provenance selector, and the smallest-edit directive', () => {
@@ -56,7 +49,7 @@ test('spacing edit names the token, the provenance selector, and the smallest-ed
     after: { token: '--spacing-xl', value: '24px', offScale: false },
     provenance: { selector: '.card[data-v-1a2b]', sourceKind: 'scoped' },
   };
-  const md = blockFor({ ...base, edits: [edit] }, 1, false, TYPES);
+  const md = blockFor({ ...base, edits: [edit] }, 1, TYPES);
   assert.match(md, /\*\*Edit `padding`:\*\* `20px` → token `--spacing-xl \/ 24px`/);
   assert.match(md, /\*\*Defined at:\*\* `\.card\[data-v-1a2b\]` _\(scoped\)_/);
   assert.match(md, /\*\*Smallest edit:\*\*/);
@@ -130,7 +123,7 @@ test('copy edit renders the before→after wording and the i18n-aware directive'
 
 test('buildHandoff joins header + numbered blocks via numberOf', () => {
   const items = [base, { ...base, comment: 'second' }];
-  const md = buildHandoff(items, (a) => items.indexOf(a) + 5, false, TYPES);
+  const md = buildHandoff(items, (a) => items.indexOf(a) + 5, TYPES);
   assert.ok(md.startsWith(HANDOFF_HEADER));
   assert.match(md, /### 5\. /);
   assert.match(md, /### 6\. /);
@@ -144,7 +137,6 @@ const chipBase = {
   loc: 'app/Card.vue:12:5',
   classList: ['primary', 'lg'],
   provenance: { selector: '.primary', sourceKind: 'shared', value: '#0a64ff' },
-  screenshot: null,
 };
 
 test('chipBlock renders label, source, element + classes and style source', () => {
@@ -154,15 +146,6 @@ test('chipBlock renders label, source, element + classes and style source', () =
   assert.match(md, /\*\*Element:\*\* `<button>`/);
   assert.match(md, /classes: `primary lg`/);
   assert.match(md, /\*\*Style source:\*\* `\.primary` _\(shared\)_/);
-});
-
-test('chipBlock notes an attached screenshot by image number', () => {
-  const md = chipBlock({ ...chipBase, screenshot: 'data:image/png;base64,AAA' }, 4);
-  assert.match(md, /\*\*Screenshot:\*\* _\(attached — image 4\)_/);
-});
-
-test('chipBlock with no screenshot omits the screenshot line', () => {
-  assert.doesNotMatch(chipBlock(chipBase, 1), /Screenshot/);
 });
 
 test('chipBlock flags a vendor-owned element with the no-node_modules directive', () => {

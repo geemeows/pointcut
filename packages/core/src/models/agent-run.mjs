@@ -37,7 +37,7 @@ const dispatchLine = (line, h) => {
 //   onBridgeEnd()      — the {t:'end'} line (child exited)
 //   onStreamEnd()      — the HTTP body closed (reader done)
 //   onError(msg)       — the request itself failed (never reached the bridge)
-// `request` is { agent, markdown, images, resume }. `fetchImpl` is injectable for tests.
+// `request` is { agent, markdown, resume, model, mode }. `fetchImpl` is injectable for tests.
 export const streamAgentRun = (request, handlers, fetchImpl) => {
   const h = handlers;
   const doFetch = fetchImpl || fetch;

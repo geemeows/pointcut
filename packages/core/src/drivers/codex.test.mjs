@@ -41,35 +41,30 @@ test('interpretCodexEvent: unknown / malformed events yield no actions', () => {
   assert.deepEqual(interpretCodexEvent(null), []);
 });
 
-test('codex.buildArgs: exec --json + sandbox, resume first, prompt BEFORE images', () => {
-  const args = codex.buildArgs({ markdown: 'do x', shots: [{ n: 1, file: '/tmp/a.png' }], resume: 't1' });
+test('codex.buildArgs: exec --json + sandbox, resume first, then the prompt', () => {
+  const args = codex.buildArgs({ markdown: 'do x', resume: 't1' });
   assert.deepEqual(args.slice(0, 3), ['exec', 'resume', 't1']);
   assert.ok(args.includes('--json') && args.includes('--sandbox') && args.includes('workspace-write'));
-  const i = args.indexOf('-i');
-  assert.equal(args[i + 1], '/tmp/a.png');
-  // The prompt positional must come before -i (--image is variadic and would
-  // otherwise swallow it).
-  const promptIdx = args.findIndex((a) => /do x/.test(a));
-  assert.ok(promptIdx > -1 && promptIdx < i, 'prompt precedes -i');
+  assert.ok(args.some((a) => /do x/.test(a)), 'prompt is passed');
 });
 
 test('codex.buildArgs: mode picks the sandbox flag + directive', () => {
   // default / absent mode = apply → workspace-write + edit directive
-  const def = codex.buildArgs({ markdown: 'do x', shots: [], resume: null });
+  const def = codex.buildArgs({ markdown: 'do x', resume: null });
   assert.equal(def[def.indexOf('--sandbox') + 1], 'workspace-write');
   assert.ok(def.some((a) => /editing the source files/.test(a)));
   // apply-once shares the apply (write) posture
-  const once = codex.buildArgs({ markdown: 'do x', shots: [], resume: null, mode: 'apply-once' });
+  const once = codex.buildArgs({ markdown: 'do x', resume: null, mode: 'apply-once' });
   assert.equal(once[once.indexOf('--sandbox') + 1], 'workspace-write');
   // discuss → read-only + non-writing directive
-  const disc = codex.buildArgs({ markdown: 'do x', shots: [], resume: null, mode: 'discuss' });
+  const disc = codex.buildArgs({ markdown: 'do x', resume: null, mode: 'discuss' });
   assert.equal(disc[disc.indexOf('--sandbox') + 1], 'read-only');
   assert.ok(disc.some((a) => /Do not edit any files/.test(a)));
 });
 
 test('codex.buildArgs: -m added only when a model is chosen', () => {
-  assert.ok(!codex.buildArgs({ markdown: 'x', shots: [], resume: null, model: '' }).includes('-m'));
-  const args = codex.buildArgs({ markdown: 'x', shots: [], resume: null, model: 'gpt-5-codex' });
+  assert.ok(!codex.buildArgs({ markdown: 'x', resume: null, model: '' }).includes('-m'));
+  const args = codex.buildArgs({ markdown: 'x', resume: null, model: 'gpt-5-codex' });
   const i = args.indexOf('-m');
   assert.equal(args[i + 1], 'gpt-5-codex');
 });

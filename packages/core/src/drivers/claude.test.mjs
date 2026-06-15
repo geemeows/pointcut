@@ -60,36 +60,31 @@ test('interpretClaudeEvent: unknown / malformed events yield no actions', () => 
 });
 
 test('claude.buildArgs: stream-json + acceptEdits, resume appended when present', () => {
-  const base = claude.buildArgs({ markdown: 'do x', shots: [], resume: null });
+  const base = claude.buildArgs({ markdown: 'do x', resume: null });
   assert.equal(base[0], '-p');
   assert.ok(base.includes('stream-json') && base.includes('acceptEdits'));
   assert.ok(!base.includes('--resume'));
-  const resumed = claude.buildArgs({ markdown: 'do x', shots: [], resume: 'sess1' });
+  const resumed = claude.buildArgs({ markdown: 'do x', resume: 'sess1' });
   assert.deepEqual(resumed.slice(-2), ['--resume', 'sess1']);
-});
-
-test('claude.buildArgs: screenshot paths are listed in the prompt', () => {
-  const args = claude.buildArgs({ markdown: 'do x', shots: [{ n: 1, file: '/tmp/a.png' }], resume: null });
-  assert.match(args[1], /\/tmp\/a\.png/);
 });
 
 test('claude.buildArgs: mode picks the permission flag + directive', () => {
   // default / absent mode = apply → acceptEdits + edit directive
-  const def = claude.buildArgs({ markdown: 'do x', shots: [], resume: null });
+  const def = claude.buildArgs({ markdown: 'do x', resume: null });
   assert.equal(def[def.indexOf('--permission-mode') + 1], 'acceptEdits');
   assert.match(def[1], /editing the source files/);
   // apply-once shares the apply (write) posture
-  const once = claude.buildArgs({ markdown: 'do x', shots: [], resume: null, mode: 'apply-once' });
+  const once = claude.buildArgs({ markdown: 'do x', resume: null, mode: 'apply-once' });
   assert.equal(once[once.indexOf('--permission-mode') + 1], 'acceptEdits');
   // discuss → plan + non-writing directive
-  const disc = claude.buildArgs({ markdown: 'do x', shots: [], resume: null, mode: 'discuss' });
+  const disc = claude.buildArgs({ markdown: 'do x', resume: null, mode: 'discuss' });
   assert.equal(disc[disc.indexOf('--permission-mode') + 1], 'plan');
   assert.match(disc[1], /Do not edit any files/);
 });
 
 test('claude.buildArgs: --model added only when a model is chosen', () => {
-  assert.ok(!claude.buildArgs({ markdown: 'x', shots: [], resume: null, model: '' }).includes('--model'));
-  const args = claude.buildArgs({ markdown: 'x', shots: [], resume: null, model: 'opus' });
+  assert.ok(!claude.buildArgs({ markdown: 'x', resume: null, model: '' }).includes('--model'));
+  const args = claude.buildArgs({ markdown: 'x', resume: null, model: 'opus' });
   const i = args.indexOf('--model');
   assert.equal(args[i + 1], 'opus');
 });

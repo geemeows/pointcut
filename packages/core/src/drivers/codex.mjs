@@ -1,9 +1,9 @@
 /* eslint-disable */
 // Design Toolbar — Codex Driver.
 //
-// Best-effort adapter for `codex exec --json`. Unlike Claude, Codex takes images
-// natively (-i <path>), uses `--sandbox workspace-write` (the analog of Claude's
-// acceptEdits), and resumes a thread with `codex exec resume <id>`.
+// Best-effort adapter for `codex exec --json`. Uses `--sandbox workspace-write`
+// (the analog of Claude's acceptEdits), and resumes a thread with
+// `codex exec resume <id>`.
 //
 // Verified against codex-cli 0.136.0 `exec --json`: thread.started{thread_id},
 // item.completed{item:{type:'agent_message',text}}, turn.completed. The
@@ -51,7 +51,7 @@ export const interpretCodexEvent = (e) => {
   return [];
 };
 
-// Codex reads images natively (-i), so the prompt is just the handoff + directive.
+// Compose the prompt: the toolbar's markdown handoff, then the directive.
 const buildPrompt = (markdown, mode) => [markdown.trim(), directiveForMode(mode)].join('\n\n');
 
 export const codex = {
@@ -69,16 +69,12 @@ export const codex = {
   ],
   // Sandbox follows the turn's mode: apply/apply-once → workspace-write (the
   // analog of Claude's acceptEdits); discuss → read-only so it cannot edit.
-  buildArgs({ markdown, shots, resume, model, mode }) {
+  buildArgs({ markdown, resume, model, mode }) {
     const args = ['exec'];
     if (resume) args.push('resume', String(resume)); // codex exec resume <id> …
     args.push('--json', '--sandbox', isWriteMode(mode) ? 'workspace-write' : 'read-only');
     if (model) args.push('-m', String(model));
-    // The prompt positional MUST precede -i: --image is variadic (<FILE>...), so
-    // a prompt after it gets swallowed as another image path (codex then looks
-    // for the prompt on stdin and fails).
     args.push(buildPrompt(markdown, mode));
-    shots.forEach(({ file }) => args.push('-i', file)); // images passed natively
     return args;
   },
   parse: interpretCodexEvent,

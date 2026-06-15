@@ -60,20 +60,8 @@ export const interpretCursorEvent = (e) => {
   return [];
 };
 
-// cursor-agent takes no image flag, so (like Claude) name the screenshot paths in
-// the prompt and ask it to read them; then the directive.
-const buildPrompt = (markdown, shots, mode) => {
-  const parts = [markdown.trim()];
-  if (shots.length) {
-    parts.push(
-      '## Screenshots\n' +
-        shots.map(({ n, file }) => `- Item ${n}: ${file}`).join('\n') +
-        '\n\nRead each screenshot above to see the actual rendered element.',
-    );
-  }
-  parts.push(directiveForMode(mode));
-  return parts.join('\n\n');
-};
+// Compose the prompt: the toolbar's markdown handoff, then the directive.
+const buildPrompt = (markdown, mode) => [markdown.trim(), directiveForMode(mode)].join('\n\n');
 
 // The picker falls back to a single Auto entry when the CLI can't answer (offline
 // / not logged in), so Cursor stays usable rather than vanishing from the picker.
@@ -129,9 +117,9 @@ export const cursor = {
   // it so cursor-agent won't edit. stream-json under -p emits the incremental
   // events. A resume chat id continues the conversation — it shares history with
   // the Cursor app.
-  buildArgs({ markdown, shots, resume, model, mode }) {
+  buildArgs({ markdown, resume, model, mode }) {
     const args = [
-      '-p', buildPrompt(markdown, shots, mode),
+      '-p', buildPrompt(markdown, mode),
       '--output-format', 'stream-json',
     ];
     if (isWriteMode(mode)) args.push('--force');
