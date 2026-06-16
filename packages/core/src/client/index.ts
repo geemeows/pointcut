@@ -9,8 +9,10 @@
 // Flow: Pick mode highlights elements on hover and locks one on click — or drag
 // a marquee to annotate a whole area. Each saved Annotation has a type tag and
 // accumulates in a Session/Queue persisted to localStorage. Numbered bubbles pin
-// to annotated spots. A tabbed drawer holds Comments (the Queue) and Chat (a
-// continuous discuss session). "Export" downloads a paste-and-go markdown
+// to annotated spots. A tabbed side panel holds Comments (the Queue) and Chat
+// (a continuous discuss session); it toggles from the toolbar and is non-modal —
+// no backdrop, and clicking the page leaves it open (close it from the toolbar
+// or its own close button). "Export" downloads a paste-and-go markdown
 // Handoff; "Send to agent" streams the chosen agent's Actions back through the
 // Bridge. The source loc is clickable to open the file in your editor.
 //
@@ -249,10 +251,6 @@ export function mount() {
         display: none; align-items: center; justify-content: center; box-sizing: border-box;
       }
       .cbadge.show { display: flex; }
-      .scrim {
-        position: fixed; inset: 0; pointer-events: auto; background: rgba(0,0,0,.28); display: none;
-      }
-      .scrim.open { display: block; }
       .drawer {
         position: fixed; top: 0; right: 0; height: 100%; width: 384px; max-width: 92vw;
         pointer-events: auto; background: #161719; color: #fff; box-sizing: border-box;
@@ -855,7 +853,6 @@ export function mount() {
         </div>
       </div>
 
-      <div class="scrim"></div>
       <aside class="drawer">
         <div class="drawer-head">
           <span class="clogo" title="Agent">${AGENT_ICON}</span>
@@ -935,7 +932,7 @@ export function mount() {
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8V5a2 2 0 0 1 2-2h3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M21 16v3a2 2 0 0 1-2 2h-3"/><circle cx="12" cy="12" r="2.5"/></svg>
           <span class="lbl">Pick</span><span class="kbd">${KBD('S')}</span>
         </button>
-        <button class="icon-btn" data-act="comments" data-tip="Show comments  ${KBD('C')}">
+        <button class="icon-btn" data-act="comments" data-tip="Toggle comments  ${KBD('C')}">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M8 9h8M8 13h5"/></svg>
           <span class="cbadge">0</span>
         </button>
@@ -968,13 +965,13 @@ export function mount() {
   const marquee = $('.marquee');
   const bubblesWrap = $('.bubbles');
   const bar = $('.bar');
+  const commentsBtn = $('.bar [data-act="comments"]');
   const grip = $('.bar .grip');
   const puck = $('.bar .puck');
   const pickBtn = $('.bar [data-act="pick"]');
   const sendBtn = $('.bar [data-act="send"]');
   const countBadge = $('.cbadge');
   const clearBtn = $('.bar [data-act="clear"]');
-  const scrim = $('.scrim');
   const drawer = $('.drawer');
   const drawerList = $('.drawer-list');
   const drawerCount = $('.drawer-head .dcount');
@@ -2247,17 +2244,29 @@ export function mount() {
     applyTab();
   };
 
+  // Non-modal: instead of overlaying the page, shrink it. A right margin on the
+  // host's <html> shifts normal-flow content left by the panel's width while the
+  // fixed panel fills the gap (docked-devtools effect). Margin must go on the
+  // root, not <body>, so it also reflows the page's own fixed/absolute layout.
+  const pushPage = (open) => {
+    const root = document.documentElement;
+    root.style.transition = 'margin-right .22s cubic-bezier(.4,0,.2,1)';
+    root.style.marginRight = open ? `${drawer.offsetWidth}px` : '';
+  };
+
   const openDrawer = () => {
     drawerOpen = true;
     renderDrawer();
     applyTab();
-    scrim.classList.add('open');
     drawer.classList.add('open');
+    commentsBtn.classList.add('on');
+    pushPage(true);
   };
   const closeDrawer = () => {
     drawerOpen = false;
-    scrim.classList.remove('open');
     drawer.classList.remove('open');
+    commentsBtn.classList.remove('on');
+    pushPage(false);
   };
 
   const clearAll = () => {
@@ -2274,7 +2283,7 @@ export function mount() {
     if (!btn) return;
     const act = btn.dataset.act;
     if (act === 'pick') setPicking(!picking);
-    else if (act === 'comments') openDrawer();
+    else if (act === 'comments') drawerOpen ? closeDrawer() : openDrawer();
     else if (act === 'send') sendAll();
     else if (act === 'clear') clearAll();
     else if (act === 'collapse') collapseBar();
@@ -2401,7 +2410,6 @@ export function mount() {
     if (e.target.closest('[data-act="agent-close"]')) cpanel.classList.remove('open');
   });
 
-  scrim.addEventListener('click', closeDrawer);
   drawer.addEventListener('click', (e) => {
     if (e.target.closest('[data-act="drawer-close"]')) {
       closeDrawer();
