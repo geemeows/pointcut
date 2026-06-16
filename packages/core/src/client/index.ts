@@ -397,13 +397,8 @@ export function mount() {
       .dsend svg { width: 16px; height: 16px; display: block; }
       .crow {
         position: relative; background: #1a1b1e; border: 1px solid rgba(255,255,255,.07); border-radius: 16px;
-        padding: 12px 14px 14px; display: flex; flex-direction: column; gap: 12px;
+        overflow: hidden; display: flex; flex-direction: column;
         transition: border-color .12s, background .12s;
-      }
-      /* Brand accent rail down the left edge — the card's identity marker. */
-      .crow::before {
-        content: ''; position: absolute; left: 0; top: 12px; bottom: 12px; width: 3px;
-        border-radius: 0 3px 3px 0; background: var(--pc-accent); box-shadow: 0 0 10px rgba(182,250,5,.55);
       }
       .crow:hover { border-color: rgba(255,255,255,.14); background: #1d1e22; }
       .crow-detail { display: flex; flex-direction: column; gap: 8px; }
@@ -421,12 +416,11 @@ export function mount() {
       }
       .crow-top .src { margin-bottom: 0; min-width: 0; flex: 1; border: 1px solid rgba(255,255,255,.1); }
       /* Labeled Edit / Dismiss buttons — quiet until the row is hovered. */
-      .crow-tools { display: flex; gap: 6px; flex: none; opacity: 0; transition: opacity .12s; }
-      .crow:hover .crow-tools, .crow:focus-within .crow-tools { opacity: 1; }
+      .crow-tools { display: flex; gap: 6px; flex: none; }
       .crow-act {
         all: unset; box-sizing: border-box; cursor: pointer; flex: none;
-        display: inline-flex; align-items: center; gap: 6px; padding: 6px 11px;
-        border-radius: 9px; font-size: 12px; font-weight: 600;
+        display: inline-flex; align-items: center; justify-content: center; padding: 6px;
+        border-radius: 8px; font-size: 12px; font-weight: 600;
         color: var(--pc-accent); border: 1px solid rgba(182,250,5,.3); background: rgba(182,250,5,.06);
         transition: background .12s, border-color .12s, color .12s;
       }
@@ -444,11 +438,10 @@ export function mount() {
         color: #e7e9ee; border-left: 3px solid rgba(255,255,255,.16); background: rgba(255,255,255,.035);
         border-radius: 0 7px 7px 0; padding: 8px 11px;
       }
-      /* Drawer comment box — full bordered field, matching the mockup. */
+      /* Drawer comment body — plain text panel below the head divider. */
       .crow-body {
         margin: 0; font-size: 14px; line-height: 1.5; white-space: pre-wrap; word-break: break-word;
-        color: #e7e9ee; border: 1px solid rgba(255,255,255,.1); background: rgba(255,255,255,.02);
-        border-radius: 10px; padding: 11px 13px; min-height: 22px;
+        color: #e7e9ee; padding: 12px 14px; min-height: 22px;
       }
       /* ---- Comments tab revamp ------------------------------------------- */
       /* Top action bar (replaces the old foot composer): selection count, Add
@@ -495,48 +488,42 @@ export function mount() {
       .mini-btn[disabled] { opacity: .4; cursor: not-allowed; }
       .mini-btn.ghost { background: #2a2c30; color: #e7e9ee; }
       .mini-btn.ghost:hover { background: #363940; }
-      /* Source chip sits between head and body — drop its standalone margin so
-         the card's column gap is the only spacing. */
-      .crow .src { margin-bottom: 0; align-self: flex-start; max-width: 100%; }
-      /* Comment card head — author + relative time on the left, Resolve on the right. */
-      .crow-head { display: flex; align-items: center; gap: 8px; }
-      .crow-author { font-size: 13px; font-weight: 700; color: #fff; }
-      .crow-time { font-size: 11px; color: #8b93a1; }
+      /* Filename chip in the card head — boxed, with the file icon in its own
+         faint inner square. */
+      .crow .src {
+        margin: 0; min-width: 0; padding: 5px 9px; border-radius: 9px; font-size: 12px;
+        background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.08); color: #cfd5df;
+      }
+      .crow .src svg {
+        width: 12px; height: 12px; padding: 3px; border-radius: 5px; box-sizing: content-box;
+        background: rgba(255,255,255,.06); opacity: .85;
+      }
+      /* Filename chip + divider + relative time, sharing the left of the head. */
+      .crow-meta { display: flex; align-items: center; gap: 10px; min-width: 0; flex: 1; }
+      .crow-divider { width: 1px; height: 18px; background: rgba(255,255,255,.12); flex: none; }
+      /* Comment card head — filename + time on the left, Selected + tools on the right. */
+      .crow-head {
+        display: flex; align-items: center; gap: 10px; padding: 10px 12px;
+        border-bottom: 1px solid rgba(255,255,255,.07);
+      }
+      .crow-time { font-size: 12px; color: #8b93a1; flex: none; }
       .crow-resolve {
-        all: unset; box-sizing: border-box; cursor: pointer; margin-left: auto; flex: none;
-        display: inline-flex; align-items: center; gap: 7px; font-size: 12px; color: #8b93a1;
-        transition: color .12s;
+        all: unset; box-sizing: border-box; cursor: pointer; flex: none;
+        display: inline-flex; align-items: center; color: #8b93a1; transition: color .12s;
       }
       .crow-resolve:hover { color: #e7e9ee; }
       .crow-resolve-box {
-        width: 16px; height: 16px; border-radius: 4px; border: 1.5px solid rgba(255,255,255,.28);
+        width: 18px; height: 18px; border-radius: 5px; border: 1.5px solid rgba(255,255,255,.22);
         display: inline-flex; align-items: center; justify-content: center; flex: none; position: relative;
       }
-      .crow-resolve:hover .crow-resolve-box { border-color: rgba(255,255,255,.5); }
-      .crow-resolve-box.on { background: var(--pc-accent); border-color: var(--pc-accent); }
+      .crow-resolve:hover .crow-resolve-box { border-color: rgba(255,255,255,.4); }
+      /* Selected = brand-tinted box with a chartreuse check (outline, not filled). */
+      .crow-resolve-box.on { border-color: var(--pc-accent); background: rgba(182,250,5,.08); }
       .crow-resolve-box.on::after {
-        content: ''; position: absolute; left: 4.5px; top: 1.5px; width: 4px; height: 8px;
-        border: solid var(--pc-ink); border-width: 0 2px 2px 0; transform: rotate(45deg);
+        content: ''; position: absolute; left: 6px; top: 2.5px; width: 4px; height: 8px;
+        border: solid var(--pc-accent); border-width: 0 2px 2px 0; transform: rotate(45deg);
       }
-      .crow.selected { border-color: rgba(182,250,5,.4); }
-      /* Reply affordance + the per-card reply input (revealed on click). */
-      .crow-reply {
-        all: unset; box-sizing: border-box; cursor: pointer; align-self: flex-start;
-        font-size: 12px; font-weight: 600; color: #8b93a1; transition: color .12s;
-      }
-      .crow-reply:hover { color: var(--pc-accent); }
-      .crow.reply-open .crow-reply { display: none; }
-      .crow-reply-box { display: none; flex-direction: column; gap: 6px; }
-      .crow.reply-open .crow-reply-box { display: flex; }
-      .crow-reply-box .mini-input { min-height: 38px; }
-      /* Threaded replies under a comment. */
-      .crow-replies { display: flex; flex-direction: column; gap: 8px; }
-      .crow-replies:empty { display: none; }
-      .reply { display: flex; flex-direction: column; gap: 3px; padding-left: 11px; border-left: 2px solid rgba(255,255,255,.12); }
-      .reply-head { display: flex; align-items: center; gap: 7px; }
-      .reply-author { font-size: 12px; font-weight: 700; color: #e7e9ee; }
-      .reply-time { font-size: 10px; color: #8b93a1; }
-      .reply-body { font-size: 13px; line-height: 1.5; color: #cfd5df; white-space: pre-wrap; word-break: break-word; }
+      .crow.selected { border-color: rgba(255,255,255,.12); }
       .panel {
         position: fixed; pointer-events: auto; display: none;
         background: #1b1d21; color: #fff; padding: 14px; border-radius: 14px;
@@ -2221,41 +2208,25 @@ export function mount() {
       if (on) row.classList.add('selected');
       row.innerHTML =
         `<div class="crow-head">` +
-        `<span class="crow-author"></span>` +
-        `<span class="crow-time"></span>` +
         `<button class="crow-resolve" data-act="crow-select" aria-pressed="${on ? 'true' : 'false'}" title="Select to send">` +
-        `<span>Resolve</span><span class="crow-resolve-box${on ? ' on' : ''}"></span>` +
+        `<span class="crow-resolve-box${on ? ' on' : ''}"></span>` +
         `</button>` +
-        `</div>` +
+        `<div class="crow-meta">` +
         (hasLoc
-          ? `<div class="src"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg><span class="src-name"></span></div>`
+          ? `<div class="src"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg><span class="src-name"></span></div>` +
+            `<span class="crow-divider"></span>`
           : '') +
-        `<blockquote class="crow-body"></blockquote>` +
-        `<div class="crow-replies"></div>` +
-        `<button class="crow-reply" data-act="reply-open">Reply</button>` +
-        `<div class="crow-reply-box">` +
-        `<textarea class="mini-input" placeholder="Write a reply…  (⌘/Ctrl+Enter)"></textarea>` +
-        `<div class="mini-actions">` +
-        `<button class="mini-btn ghost" data-act="reply-cancel">Cancel</button>` +
-        `<button class="mini-btn" data-act="reply-send">Reply</button>` +
+        `<span class="crow-time"></span>` +
         `</div>` +
-        `</div>`;
-      row.querySelector('.crow-author').textContent = a.author || 'You';
+        `<div class="crow-tools">` +
+        `<button class="crow-act" data-act="crow-edit" title="Edit comment" aria-label="Edit comment"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></button>` +
+        `<button class="crow-act danger" data-act="crow-delete" title="Delete comment" aria-label="Delete comment"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>` +
+        `</div>` +
+        `</div>` +
+        `<blockquote class="crow-body"></blockquote>`;
       row.querySelector('.crow-time').textContent = relTime(a.createdAt);
       if (hasLoc) fillSrc(row.querySelector('.src'), a.loc);
       row.querySelector('.crow-body').textContent = a.comment;
-      const repliesEl = row.querySelector('.crow-replies');
-      (a.replies || []).forEach((r) => {
-        const rep = document.createElement('div');
-        rep.className = 'reply';
-        rep.innerHTML =
-          `<div class="reply-head"><span class="reply-author"></span><span class="reply-time"></span></div>` +
-          `<div class="reply-body"></div>`;
-        rep.querySelector('.reply-author').textContent = r.author || 'You';
-        rep.querySelector('.reply-time').textContent = relTime(r.createdAt);
-        rep.querySelector('.reply-body').textContent = r.text;
-        repliesEl.appendChild(rep);
-      });
       drawerList.appendChild(row);
     });
     updateCommentsActions();
@@ -2418,16 +2389,6 @@ export function mount() {
     else if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); sendCommentsToChat(); }
   });
 
-  // Add a threaded reply to a comment, then re-render the list.
-  const addReply = (id, text) => {
-    const a = Q.get(id);
-    if (!a || !text) return;
-    if (!Array.isArray(a.replies)) a.replies = [];
-    a.replies.push({ author: 'You', text, createdAt: Date.now() });
-    Q.persist();
-    renderDrawer();
-  };
-
   chatText.addEventListener('input', chatStateUpdate);
   chatText.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
@@ -2501,22 +2462,15 @@ export function mount() {
       updateCommentsActions();
       return;
     }
-    // Reply — reveal the inline reply box, or commit / cancel it.
-    if (e.target.closest('[data-act="reply-open"]')) {
-      row.classList.add('reply-open');
-      const ta = row.querySelector('.crow-reply-box textarea');
-      if (ta) ta.focus();
+    if (e.target.closest('[data-act="crow-edit"]')) {
+      editAnnotation(id);
       return;
     }
-    if (e.target.closest('[data-act="reply-cancel"]')) {
-      row.classList.remove('reply-open');
-      const ta = row.querySelector('.crow-reply-box textarea');
-      if (ta) ta.value = '';
-      return;
-    }
-    if (e.target.closest('[data-act="reply-send"]')) {
-      const ta = row.querySelector('.crow-reply-box textarea');
-      addReply(id, ta ? ta.value.trim() : '');
+    if (e.target.closest('[data-act="crow-delete"]')) {
+      const i = selectedIds.indexOf(id);
+      if (i >= 0) selectedIds.splice(i, 1);
+      deleteAnnotation(id);
+      renderDrawer();
       return;
     }
     const loc = e.target.closest('.src');
@@ -2524,16 +2478,6 @@ export function mount() {
       openInEditor(loc.dataset.loc);
       return;
     }
-  });
-  // ⌘/Ctrl+Enter inside a card's reply box commits the reply.
-  drawerList.addEventListener('keydown', (e) => {
-    if (e.key !== 'Enter' || !(e.metaKey || e.ctrlKey)) return;
-    const ta = e.target.closest('.crow-reply-box textarea');
-    if (!ta) return;
-    const row = ta.closest('.crow');
-    if (!row) return;
-    e.preventDefault();
-    addReply(row.dataset.id, ta.value.trim());
   });
 
   note.addEventListener('click', (e) => {
