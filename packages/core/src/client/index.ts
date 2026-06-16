@@ -720,6 +720,28 @@ export function mount() {
       }
       .agent-pick.sm .agent-icon, .agent-pick.sm .agent-chev { width: 14px; height: 14px; }
       .agent-pick.right .agent-menu { left: auto; right: 0; }
+      /* Settings (gear) menu — pops above the bar; holds the default-model
+         picker and the destructive "Delete all comments" action. */
+      .gear-pick { position: relative; display: inline-flex; flex: none; }
+      .gear-menu {
+        position: absolute; right: 0; bottom: calc(100% + 8px); display: none; flex-direction: column; gap: 2px;
+        min-width: 230px; z-index: 6; background: #1b1d21; border: 1px solid #2b313c; border-radius: 12px;
+        padding: 8px; box-shadow: 0 16px 44px rgba(0,0,0,.55);
+      }
+      .gear-menu.open { display: flex; }
+      .gear-section { display: flex; flex-direction: column; gap: 6px; padding: 4px 4px 8px; }
+      .gear-label { font-size: 12px; color: #8b93a1; user-select: none; padding: 0 2px; }
+      .gear-menu .agent-pick.show { display: block; }
+      .gear-menu .agent-trigger { width: 100%; max-width: none; }
+      .gear-sep { height: 1px; background: rgba(255,255,255,.08); margin: 2px 0; }
+      .gear-item {
+        all: unset; box-sizing: border-box; cursor: pointer; display: flex; align-items: center; gap: 8px;
+        padding: 9px 10px; border-radius: 8px; color: #e7e9ee; font-size: 13px;
+      }
+      .gear-item:hover { background: #2a2c30; }
+      .gear-item svg { width: 16px; height: 16px; flex: none; }
+      .gear-item.danger { color: #ff8d8d; }
+      .gear-item.danger:hover { background: rgba(255,90,90,.12); }
       /* Send: the primary "Go" — lemon active accent, set apart from neutral tools. */
       .icon-btn.send { background: var(--pc-accent); color: var(--pc-ink); }
       .icon-btn.send:hover { background: var(--pc-accent-hover); }
@@ -936,20 +958,29 @@ export function mount() {
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M8 9h8M8 13h5"/></svg>
           <span class="cbadge">0</span>
         </button>
-        <button class="icon-btn danger" data-act="clear" data-tip="Delete all comments">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M10 11v6M14 11v6"/></svg>
-        </button>
-        <div class="agent-pick">
-          <button class="agent-trigger" data-act="agent-toggle" title="Coding agent" aria-label="Coding agent">
-            <svg class="agent-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="16" height="16" x="4" y="4" rx="2"/><rect width="6" height="6" x="9" y="9" rx="1"/><path d="M15 2v2"/><path d="M15 20v2"/><path d="M2 15h2"/><path d="M2 9h2"/><path d="M20 15h2"/><path d="M20 9h2"/><path d="M9 2v2"/><path d="M9 20v2"/></svg>
-            <span class="agent-trigger-label"></span>
-            <svg class="agent-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+        <div class="gear-pick">
+          <button class="icon-btn" data-act="gear-toggle" data-tip="Settings">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
           </button>
-          <div class="agent-menu"></div>
+          <div class="gear-menu">
+            <div class="gear-section">
+              <div class="gear-label">Default model</div>
+              <div class="agent-pick show">
+                <button class="agent-trigger" data-act="agent-toggle" title="Coding agent" aria-label="Coding agent">
+                  <svg class="agent-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="16" height="16" x="4" y="4" rx="2"/><rect width="6" height="6" x="9" y="9" rx="1"/><path d="M15 2v2"/><path d="M15 20v2"/><path d="M2 15h2"/><path d="M2 9h2"/><path d="M20 15h2"/><path d="M20 9h2"/><path d="M9 2v2"/><path d="M9 20v2"/></svg>
+                  <span class="agent-trigger-label"></span>
+                  <svg class="agent-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+                </button>
+                <div class="agent-menu"></div>
+              </div>
+            </div>
+            <div class="gear-sep"></div>
+            <button class="gear-item danger" data-act="clear">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M10 11v6M14 11v6"/></svg>
+              <span>Delete all comments</span>
+            </button>
+          </div>
         </div>
-        <button class="icon-btn send" data-act="send" data-tip="Send to agent  ${KBD('G')}">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/><path d="M20 3v4"/><path d="M22 5h-4"/><path d="M4 17v2"/><path d="M5 18H3"/></svg>
-        </button>
         <span class="divider"></span>
         <button class="icon-btn" data-act="collapse" data-tip="Collapse">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14h6m0 0v6m0-6-7 7"/><path d="M20 10h-6m0 0V4m0 6 7-7"/></svg>
@@ -969,9 +1000,9 @@ export function mount() {
   const grip = $('.bar .grip');
   const puck = $('.bar .puck');
   const pickBtn = $('.bar [data-act="pick"]');
-  const sendBtn = $('.bar [data-act="send"]');
   const countBadge = $('.cbadge');
-  const clearBtn = $('.bar [data-act="clear"]');
+  const gearWrap = $('.bar .gear-pick');
+  const gearMenu = $('.bar .gear-menu');
   const drawer = $('.drawer');
   const drawerList = $('.drawer-list');
   const drawerCount = $('.drawer-head .dcount');
@@ -1104,8 +1135,6 @@ export function mount() {
     const n = Q.count();
     countBadge.textContent = String(n);
     countBadge.classList.toggle('show', n > 0);
-    clearBtn.disabled = n === 0;
-    sendBtn.disabled = n === 0 || agentRunning || !selectedAgent;
     if (drawerOpen) renderDrawer();
   };
 
@@ -1779,7 +1808,6 @@ export function mount() {
       cLog('err', '⚠', escHtml(reason));
     }
     stopThinking(agentErrored);
-    sendBtn.disabled = Q.count() === 0 || !selectedAgent;
     updateCommentsActions();
   };
 
@@ -1795,7 +1823,6 @@ export function mount() {
     agentRunning = true;
     agentErrored = false;
     closeTextRow(); // fresh run — don't append onto a prior run's last line
-    sendBtn.disabled = true;
     commentsSend.disabled = true;
     // Single-comment / whole-queue sends from the bar + bubbles stream into the
     // floating panel. (The Comments tab's "Send to agent" routes to Chat instead.)
@@ -1932,7 +1959,6 @@ export function mount() {
       }
       pendingResolveIds = [];
     }
-    sendBtn.disabled = Q.count() === 0 || !selectedAgent;
     chatStateUpdate();
     updateCommentsActions();
   };
@@ -1944,7 +1970,6 @@ export function mount() {
     agentRunning = true;
     agentErrored = false;
     closeTextRow();
-    sendBtn.disabled = true;
     commentsSend.disabled = true;
     chatSend.disabled = true;
     surface = { log: chatStream, status: chatStatus };
@@ -1999,7 +2024,6 @@ export function mount() {
     agentRunning = true;
     agentErrored = false;
     closeTextRow();
-    sendBtn.disabled = true;
     commentsSend.disabled = true;
     chatSend.disabled = true;
     surface = { log: chatStream, status: chatStatus };
@@ -2277,6 +2301,8 @@ export function mount() {
     closePopover();
   };
 
+  const closeGearMenu = () => gearMenu.classList.remove('open');
+
   // ---- Wiring --------------------------------------------------------------
   bar.addEventListener('click', (e) => {
     const btn = e.target.closest('[data-act]');
@@ -2284,8 +2310,8 @@ export function mount() {
     const act = btn.dataset.act;
     if (act === 'pick') setPicking(!picking);
     else if (act === 'comments') drawerOpen ? closeDrawer() : openDrawer();
-    else if (act === 'send') sendAll();
-    else if (act === 'clear') clearAll();
+    else if (act === 'gear-toggle') gearMenu.classList.toggle('open');
+    else if (act === 'clear') { clearAll(); closeGearMenu(); }
     else if (act === 'collapse') collapseBar();
   });
 
@@ -2559,6 +2585,7 @@ export function mount() {
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
       if (pickers.some((p) => p.menu.classList.contains('open'))) { closeAgentMenu(); return; }
+      if (gearMenu.classList.contains('open')) { closeGearMenu(); return; }
       if (cpanel.classList.contains('open')) cpanel.classList.remove('open');
       else if (drawerOpen) closeDrawer();
       else if (note.style.display === 'block') closeNote();
@@ -2606,10 +2633,16 @@ export function mount() {
     '<svg class="agent-opt-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>';
   // Three instances — the bar, the drawer composer, and the chat composer —
   // share one selection; all reflect and drive the same selectedAgent/model.
-  const pickers = ['.bar .agent-pick', '.chat-composer .agent-pick'].map((sel) => {
+  // The gear-menu picker is always shown (it's the "Default model" control);
+  // the chat composer's only appears when there's more than one model to pick.
+  const pickers = [
+    { sel: '.gear-menu .agent-pick', alwaysShow: true },
+    { sel: '.chat-composer .agent-pick', alwaysShow: false },
+  ].map(({ sel, alwaysShow }) => {
     const wrap = $(sel);
     return {
       wrap,
+      alwaysShow,
       trigger: wrap.querySelector('.agent-trigger'),
       label: wrap.querySelector('.agent-trigger-label'),
       menu: wrap.querySelector('.agent-menu'),
@@ -2651,8 +2684,7 @@ export function mount() {
     selectedModel = first ? modelsOf(first)[0].value : '';
     const label = first ? modelsOf(first)[0].label : 'No agent';
     const total = availableAgents.reduce((n, ag) => n + modelsOf(ag).length, 0);
-    pickers.forEach((p) => { p.label.textContent = label; p.wrap.classList.toggle('show', total > 1); });
-    if (!availableAgents.length) sendBtn.dataset.tip = 'No coding-agent CLI found on PATH';
+    pickers.forEach((p) => { p.label.textContent = label; p.wrap.classList.toggle('show', p.alwaysShow || total > 1); });
     renderAllMenus();
     refreshCount();
     updateCommentsActions();
@@ -2679,6 +2711,9 @@ export function mount() {
   document.addEventListener('mousedown', (e) => {
     const open = pickers.some((p) => p.menu.classList.contains('open'));
     if (open && !pickers.some((p) => e.composedPath().includes(p.wrap))) closeAgentMenu();
+    // The gear menu hosts one of those comboboxes, so close it only once the
+    // press lands outside the whole gear control (and not on its open submenu).
+    if (gearMenu.classList.contains('open') && !e.composedPath().includes(gearWrap)) closeGearMenu();
   }, true);
   bridgeFetch('/__pointcut/agents')
     .then((r) => (r.ok ? r.json() : { agents: [] }))
