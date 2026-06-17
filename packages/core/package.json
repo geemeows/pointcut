@@ -1,6 +1,6 @@
 {
   "name": "@pointcut/core",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Bundler-free, framework-free guts of Pointcut: client, models, drivers, and the Bridge.",
   "type": "module",
   "license": "MIT",
@@ -38,7 +38,9 @@
       "import": "./dist/models/index.js"
     }
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "rm -rf dist && tsup",
     "dev": "tsup --watch",

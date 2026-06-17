@@ -1,6 +1,6 @@
 {
   "name": "@pointcut/sidecar",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Standalone Node server mounting the Pointcut Bridge for dev-server-less setups (a peer to auto-attach, not a fallback).",
   "type": "module",
   "license": "MIT",
@@ -29,9 +29,14 @@
     "pointcut-sidecar": "./dist/cli.js"
   },
   "exports": {
-    ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" }
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "rm -rf dist && tsup",
     "dev": "tsup --watch",

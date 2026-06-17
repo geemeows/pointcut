@@ -1,6 +1,6 @@
 {
   "name": "@pointcut/example-vue-webpack",
-  "version": "0.0.0",
+  "version": "0.0.1",
   "private": true,
   "type": "module",
   "description": "Vue + Webpack tracer-bullet demo: one-plugin install auto-attaches the Bridge via setupMiddlewares; pick a live element, jump to source, send to Agent.",
