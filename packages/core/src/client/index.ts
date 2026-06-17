@@ -748,28 +748,66 @@ export function mount() {
       }
       .agent-pick.sm .agent-icon, .agent-pick.sm .agent-chev { width: 14px; height: 14px; }
       .agent-pick.right .agent-menu { left: auto; right: 0; }
-      /* Settings (gear) menu — pops above the bar; holds the default-model
-         picker and the destructive "Delete all comments" action. */
+      /* Settings (gear) menu — a native-style context menu that pops above the
+         bar; the "Default model" row opens a flyout submenu listing every model
+         (grouped per agent by a horizontal divider label, not nested), then the
+         destructive "Delete all comments" action. */
       .gear-pick { position: relative; display: inline-flex; flex: none; }
       .gear-menu {
         position: absolute; right: 0; bottom: calc(100% + 8px); display: none; flex-direction: column; gap: 2px;
         min-width: 230px; z-index: 6; background: #1b1d21; border: 1px solid #2b313c; border-radius: 12px;
-        padding: 8px; box-shadow: 0 16px 44px rgba(0,0,0,.55);
+        padding: 6px; box-shadow: 0 16px 44px rgba(0,0,0,.55);
       }
       .gear-menu.open { display: flex; }
-      .gear-section { display: flex; flex-direction: column; gap: 6px; padding: 4px 4px 8px; }
-      .gear-label { font-size: 12px; color: #8b93a1; user-select: none; padding: 0 2px; }
-      .gear-menu .agent-pick.show { display: block; }
-      .gear-menu .agent-trigger { width: 100%; max-width: none; }
-      .gear-sep { height: 1px; background: rgba(255,255,255,.08); margin: 2px 0; }
+      .gear-sep { height: 1px; background: rgba(255,255,255,.08); margin: 4px 2px; }
       .gear-item {
-        all: unset; box-sizing: border-box; cursor: pointer; display: flex; align-items: center; gap: 8px;
+        all: unset; box-sizing: border-box; cursor: pointer; display: flex; align-items: center; gap: 10px;
         padding: 9px 10px; border-radius: 8px; color: #e7e9ee; font-size: 13px;
       }
       .gear-item:hover { background: #2a2c30; }
-      .gear-item svg { width: 16px; height: 16px; flex: none; }
+      .gear-item > svg:first-child { width: 16px; height: 16px; flex: none; opacity: .8; }
       .gear-item.danger { color: #ff8d8d; }
       .gear-item.danger:hover { background: rgba(255,90,90,.12); }
+      .gear-item-label { flex: 1; white-space: nowrap; }
+      .gear-model-val {
+        color: #8b93a1; font-size: 12px; white-space: nowrap;
+        max-width: 110px; overflow: hidden; text-overflow: ellipsis;
+      }
+      .gear-chev { width: 15px; height: 15px; flex: none; opacity: .55; margin-right: -2px; }
+      /* Flyout submenu — opens to the RIGHT by default; .flip-left swaps it to
+         the left when the bar sits too near the viewport's right edge (decided
+         in JS when the gear menu opens). A transparent bridge (::after) spans
+         the gap on the flyout's near side so the pointer keeps :hover while
+         crossing from the row to the flyout. */
+      .gear-sub { position: relative; }
+      .gear-flyout {
+        position: absolute; left: calc(100% + 6px); top: -6px; display: none; flex-direction: column; gap: 1px;
+        min-width: 168px; max-height: 320px; overflow-y: auto; z-index: 7;
+        background: #1b1d21; border: 1px solid #2b313c; border-radius: 12px;
+        padding: 6px; box-shadow: 0 16px 44px rgba(0,0,0,.55);
+      }
+      .gear-flyout::after { content: ''; position: absolute; top: 0; bottom: 0; left: -6px; width: 6px; }
+      .gear-sub.flip-left > .gear-flyout { left: auto; right: calc(100% + 6px); }
+      .gear-sub.flip-left > .gear-flyout::after { left: auto; right: -6px; }
+      .gear-sub:hover > .gear-flyout { display: flex; }
+      .gear-sub:hover > .gear-item { background: #2a2c30; }
+      /* Group header: agent name flanked by inline divider lines (no nesting). */
+      .gear-group-label {
+        display: flex; align-items: center; gap: 8px;
+        font-size: 12px; color: #8b93a1; text-transform: capitalize; user-select: none;
+        margin: 2px 0; padding: 6px 3px;
+      }
+      .gear-group-label::before { content: ''; flex: none; width: 14px; height: 1px; background: rgba(255,255,255,.08); }
+      .gear-group-label::after { content: ''; flex: 1; height: 1px; background: rgba(255,255,255,.08); }
+      .gear-opt {
+        all: unset; box-sizing: border-box; cursor: pointer; display: flex; align-items: center; gap: 8px;
+        padding: 8px 9px; border-radius: 8px; color: #e7e9ee; font-size: 13px; white-space: nowrap;
+      }
+      .gear-opt:hover { background: #2a2c30; }
+      .gear-opt-check { width: 14px; height: 14px; flex: none; opacity: 0; }
+      .gear-opt.sel { color: var(--pc-accent); }
+      .gear-opt.sel .gear-opt-check { opacity: 1; }
+      .gear-opt-label { flex: 1; }
       /* Send: the primary "Go" — lemon active accent, set apart from neutral tools. */
       .icon-btn.send { background: var(--pc-accent); color: var(--pc-ink); }
       .icon-btn.send:hover { background: var(--pc-accent-hover); }
@@ -1006,16 +1044,14 @@ export function mount() {
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
           </button>
           <div class="gear-menu">
-            <div class="gear-section">
-              <div class="gear-label">Default model</div>
-              <div class="agent-pick show">
-                <button class="agent-trigger" data-act="agent-toggle" title="Coding agent" aria-label="Coding agent">
-                  <svg class="agent-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="16" height="16" x="4" y="4" rx="2"/><rect width="6" height="6" x="9" y="9" rx="1"/><path d="M15 2v2"/><path d="M15 20v2"/><path d="M2 15h2"/><path d="M2 9h2"/><path d="M20 15h2"/><path d="M20 9h2"/><path d="M9 2v2"/><path d="M9 20v2"/></svg>
-                  <span class="agent-trigger-label"></span>
-                  <svg class="agent-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
-                </button>
-                <div class="agent-menu"></div>
-              </div>
+            <div class="gear-sub">
+              <button class="gear-item" data-act="model-sub" aria-haspopup="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="16" height="16" x="4" y="4" rx="2"/><rect width="6" height="6" x="9" y="9" rx="1"/><path d="M15 2v2"/><path d="M15 20v2"/><path d="M2 15h2"/><path d="M2 9h2"/><path d="M20 15h2"/><path d="M20 9h2"/><path d="M9 2v2"/><path d="M9 20v2"/></svg>
+                <span class="gear-item-label">Default model</span>
+                <span class="gear-model-val"></span>
+                <svg class="gear-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+              </button>
+              <div class="gear-flyout gear-model-menu"></div>
             </div>
             <div class="gear-sep"></div>
             <button class="gear-item danger" data-act="clear">
@@ -2366,6 +2402,16 @@ export function mount() {
   };
 
   const closeGearMenu = () => gearMenu.classList.remove('open');
+  // Open the gear menu, deciding which way its model flyout should fly: right by
+  // default, left only when the bar sits too near the viewport's right edge to
+  // fit the submenu (it's draggable, so this is measured each open).
+  const gearSub = gearMenu.querySelector('.gear-sub');
+  const FLYOUT_W = 200; // submenu min-width + gap + a little slack
+  const openGearMenu = () => {
+    const room = window.innerWidth - gearMenu.getBoundingClientRect().right;
+    gearSub.classList.toggle('flip-left', room < FLYOUT_W);
+    gearMenu.classList.add('open');
+  };
 
   // ---- Wiring --------------------------------------------------------------
   bar.addEventListener('click', (e) => {
@@ -2374,7 +2420,7 @@ export function mount() {
     const act = btn.dataset.act;
     if (act === 'pick') togglePick('comment');
     else if (act === 'comments') drawerOpen ? closeDrawer() : openDrawer();
-    else if (act === 'gear-toggle') gearMenu.classList.toggle('open');
+    else if (act === 'gear-toggle') gearMenu.classList.contains('open') ? closeGearMenu() : openGearMenu();
     else if (act === 'clear') { clearAll(); closeGearMenu(); }
     else if (act === 'collapse') collapseBar();
   });
@@ -2706,12 +2752,11 @@ export function mount() {
   const modelsOf = (ag) => (ag.models && ag.models.length ? ag.models : [{ label: 'Default', value: '' }]);
   const AGENT_CHECK =
     '<svg class="agent-opt-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>';
-  // Three instances — the bar, the drawer composer, and the chat composer —
-  // share one selection; all reflect and drive the same selectedAgent/model.
-  // The gear-menu picker is always shown (it's the "Default model" control);
-  // the chat composer's only appears when there's more than one model to pick.
+  // The chat composer hosts the inline combobox (shown only when there's more
+  // than one model to pick); the "Default model" control lives in the gear menu
+  // as a flyout submenu (built separately below). Both share one selection and
+  // drive the same selectedAgent/model.
   const pickers = [
-    { sel: '.gear-menu .agent-pick', alwaysShow: true },
     { sel: '.chat-composer .agent-pick', alwaysShow: false },
   ].map(({ sel, alwaysShow }) => {
     const wrap = $(sel);
@@ -2741,6 +2786,31 @@ export function mount() {
       .join('');
   const renderAllMenus = () => { const html = menuHtml(); pickers.forEach((p) => { p.menu.innerHTML = html; }); };
   const closeAgentMenu = () => pickers.forEach((p) => { p.menu.classList.remove('open'); p.trigger.classList.remove('open'); });
+
+  // The gear menu's "Default model" flyout: every model, listed flat and
+  // grouped per agent by a horizontal divider label (no nested submenus).
+  // Selection routes through select(), so it stays in lockstep with the chat
+  // composer's combobox.
+  const gearModelMenu = $('.bar .gear-model-menu');
+  const gearModelVal = $('.bar .gear-model-val');
+  const gearModelHtml = () =>
+    availableAgents
+      .map((ag) => {
+        const opts = modelsOf(ag)
+          .map((m) => {
+            const sel = ag.name === selectedAgent && m.value === selectedModel;
+            return (
+              `<button class="gear-opt${sel ? ' sel' : ''}" data-value="${ag.name}:${m.value}" data-label="${escHtml(m.label)}">` +
+              AGENT_CHECK.replace('agent-opt-check', 'gear-opt-check') +
+              `<span class="gear-opt-label">${escHtml(m.label)}</span></button>`
+            );
+          })
+          .join('');
+        return `<div class="gear-group-label">${escHtml(ag.name)}</div>${opts}`;
+      })
+      .join('');
+  const renderGearModels = (label) => { gearModelMenu.innerHTML = gearModelHtml(); gearModelVal.textContent = label; };
+
   const select = (agent, model, label) => {
     selectedAgent = agent;
     selectedModel = model;
@@ -2748,6 +2818,7 @@ export function mount() {
     agentSessionId = null; // a resume id is per-agent/model — don't carry it across a switch
     chat.setSession(null); // ditto for the chat thread — its resume id is stale under a new agent
     renderAllMenus();
+    renderGearModels(label);
     refreshCount();
     updateCommentsActions();
     chatStateUpdate();
@@ -2761,6 +2832,7 @@ export function mount() {
     const total = availableAgents.reduce((n, ag) => n + modelsOf(ag).length, 0);
     pickers.forEach((p) => { p.label.textContent = label; p.wrap.classList.toggle('show', p.alwaysShow || total > 1); });
     renderAllMenus();
+    renderGearModels(label);
     refreshCount();
     updateCommentsActions();
     chatStateUpdate();
@@ -2782,6 +2854,16 @@ export function mount() {
         closeAgentMenu();
       }
     });
+  });
+  // Picking a model from the gear flyout commits the selection and closes the
+  // whole gear menu (which collapses the flyout with it).
+  gearMenu.addEventListener('click', (e) => {
+    const opt = e.target.closest('.gear-opt');
+    if (!opt) return;
+    const v = opt.dataset.value;
+    const i = v.indexOf(':');
+    select(v.slice(0, i), v.slice(i + 1), opt.dataset.label);
+    closeGearMenu();
   });
   // Dismiss on any press outside both comboboxes (composedPath crosses the shadow).
   document.addEventListener('mousedown', (e) => {
