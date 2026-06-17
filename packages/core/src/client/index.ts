@@ -272,23 +272,30 @@ export function mount() {
       }
       .drawer-head .dclose:hover { background: rgba(255,255,255,.08); color: #fff; }
       .drawer-head .dclose svg { width: 17px; height: 17px; }
-      .drawer-head .dmin {
-        all: unset; cursor: pointer; margin-left: auto; width: 30px; height: 30px; border-radius: 8px;
+      /* Header navigation — the Chat view (home) shows the brand + a comments
+         bubble that opens the Comments sub-view; the Comments view swaps in a
+         back arrow + "Comments" heading that returns to Chat. */
+      .dhead-spacer { flex: 1; }
+      .drawer-head .dback, .drawer-head .dbubble {
+        all: unset; cursor: pointer; width: 30px; height: 30px; border-radius: 8px; position: relative;
         display: inline-flex; align-items: center; justify-content: center; color: #cfd5df; flex: none;
       }
-      .drawer-head .dmin:hover { background: rgba(255,255,255,.08); color: #fff; }
-      .drawer-head .dmin svg { width: 16px; height: 16px; transition: transform .15s; }
-      .drawer-head.collapsed .dmin svg { transform: rotate(-90deg); }
-      /* Tab strip — Comments | Chat. Chat is a stub this issue (0008). */
-      .drawer-tabs { flex: none; display: flex; gap: 2px; padding: 0 12px; border-bottom: 1px solid rgba(255,255,255,.08); }
-      .drawer-tabs.collapsed { display: none; }
-      .dtab {
-        appearance: none; background: none; border: none; cursor: pointer;
-        padding: 10px 12px; font: inherit; font-size: 13px; font-weight: 600;
-        color: rgba(231,233,238,.55); border-bottom: 2px solid transparent; margin-bottom: -1px;
+      .drawer-head .dback:hover, .drawer-head .dbubble:hover { background: rgba(255,255,255,.08); color: #fff; }
+      .drawer-head .dback svg, .drawer-head .dbubble svg { width: 18px; height: 18px; }
+      .drawer-head .dhead-title { font-size: 16px; font-weight: 600; color: #fff; }
+      .dbubble-badge {
+        position: absolute; top: -2px; right: -2px; min-width: 15px; height: 15px; padding: 0 4px;
+        border-radius: 8px; background: var(--pc-accent); color: var(--pc-ink); font-size: 10px; font-weight: 700;
+        display: none; align-items: center; justify-content: center; box-sizing: border-box;
       }
-      .dtab:hover { color: #e7e9ee; }
-      .dtab.active { color: #fff; border-bottom-color: var(--pc-accent); }
+      .dbubble-badge.show { display: flex; }
+      /* Chat view (home): brand + bubble; hide the Comments-view affordances. */
+      .drawer.tab-chat .drawer-head .dback,
+      .drawer.tab-chat .drawer-head .dhead-title,
+      .drawer.tab-chat .drawer-head .dcount { display: none; }
+      /* Comments view (sub): back arrow + heading; hide the brand + bubble. */
+      .drawer:not(.tab-chat) .drawer-head .dbrand,
+      .drawer:not(.tab-chat) .drawer-head .dbubble { display: none; }
       /* Chat tab (0010) — a continuous discuss session: transcript + composer
          with an "Apply changes" toggle. Hidden until the Chat tab is active. */
       .chat-pane { display: none; flex: 1 1 0; min-height: 0; flex-direction: column; }
@@ -349,7 +356,6 @@ export function mount() {
         border: solid var(--pc-ink); border-width: 0 2px 2px 0; transform: rotate(45deg);
       }
       .drawer-list { flex: 1 1 0; min-height: 0; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 10px; }
-      .drawer-list.collapsed { display: none; }
       .drawer-empty { opacity: .5; text-align: center; padding: 48px 16px; font-size: 13px; line-height: 1.6; }
       /* Claude transcript — shares the drawer with the comment list; hidden until used. */
       .drawer-stream {
@@ -497,7 +503,6 @@ export function mount() {
       /* Add-note input — drops below the action bar when "Add note" is clicked. */
       .add-note-box { flex: none; display: none; flex-direction: column; gap: 8px; padding: 10px 12px; border-bottom: 1px solid rgba(255,255,255,.08); }
       .add-note-box.open { display: flex; }
-      .add-note-box.collapsed { display: none; }
       .mini-input {
         width: 100%; box-sizing: border-box; min-height: 54px; max-height: 140px; resize: none;
         background: #11141a; color: #fff; border: 1px solid #2b313c; border-radius: 10px;
@@ -943,18 +948,20 @@ export function mount() {
 
       <aside class="drawer">
         <div class="drawer-head">
+          <button class="dback" data-act="comments-back" title="Back to chat" aria-label="Back to chat">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
+          </button>
           <span class="brand dbrand" title="Pointcut">${SPARK_ICON}<span class="brand-name">Pointcut</span></span>
+          <span class="dhead-title">Comments</span>
           <span class="dcount"></span>
-          <button class="dmin" data-act="toggle-list" title="Minimize comments">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+          <span class="dhead-spacer"></span>
+          <button class="dbubble" data-act="open-comments" title="Comments" aria-label="Comments">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M8 9h8M8 13h5"/></svg>
+            <span class="dbubble-badge">0</span>
           </button>
           <button class="dclose" data-act="drawer-close" title="Close">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
           </button>
-        </div>
-        <div class="drawer-tabs">
-          <button class="dtab active" data-act="tab" data-tab="comments">Comments</button>
-          <button class="dtab" data-act="tab" data-tab="chat">Chat</button>
         </div>
         <div class="drawer-actions">
           <span class="sel-info"></span>
@@ -1086,8 +1093,7 @@ export function mount() {
   const drawerList = $('.drawer-list');
   const drawerCount = $('.drawer-head .dcount');
   const stream = $('.drawer-stream');
-  const drawerHead = $('.drawer-head');
-  const drawerTabs = $('.drawer-tabs');
+  const drawerBubbleBadge = $('.drawer-head .dbubble-badge');
   const cpanel = $('.cpanel');
   const cpanelLog = $('.cpanel .clog');
   // Each surface is independent: a run streams into the chat transcript OR the
@@ -1152,9 +1158,9 @@ export function mount() {
   let pickMode = 'comment';
   let agentRunning = false;
   let agentErrored = false;
-  let listCollapsed = false; // drawer "minimize" — hides the comment cards
-  // Active drawer tab ('comments' | 'chat'); Chat is a stub this issue (0008).
-  let activeTab = 'comments';
+  // Active drawer view ('chat' | 'comments'). Chat is home; the header's
+  // comments bubble opens Comments, whose back arrow returns here.
+  let activeTab = 'chat';
   try {
     const t = localStorage.getItem(TAB_KEY);
     if (t === 'comments' || t === 'chat') activeTab = t;
@@ -1807,7 +1813,7 @@ export function mount() {
   const updateCommentsActions = () => {
     selectedIds = selectedIds.filter((id) => Q.get(id)); // drop deleted comments
     const n = selectedIds.length;
-    drawerActions.classList.toggle('show', n > 0 && !listCollapsed);
+    drawerActions.classList.toggle('show', n > 0);
     if (!n) addNoteBox.classList.remove('open'); // nothing selected → no note input
     selInfo.textContent = `${n} selected`;
     commentsSend.disabled = agentRunning || !selectedAgent || n === 0;
@@ -2313,6 +2319,8 @@ export function mount() {
   // agent"; the action bar appears once anything is selected.
   const renderDrawer = () => {
     drawerCount.textContent = Q.count() ? String(Q.count()) : '';
+    drawerBubbleBadge.textContent = String(Q.count());
+    drawerBubbleBadge.classList.toggle('show', Q.count() > 0);
     if (!Q.count()) {
       drawerList.innerHTML =
         '<div class="drawer-empty">No comments yet.<br>Use Pick to annotate an element or region.</div>';
@@ -2353,13 +2361,11 @@ export function mount() {
     updateCommentsActions();
   };
 
-  // Reflect the active tab onto the drawer (CSS shows/hides each pane) and the
-  // tab buttons. Persisted so it survives a reload.
+  // Reflect the active view onto the drawer (CSS shows/hides each pane and
+  // swaps the header between brand+bubble and back+heading). Persisted so it
+  // survives a reload.
   const applyTab = () => {
     drawer.classList.toggle('tab-chat', activeTab === 'chat');
-    drawerTabs.querySelectorAll('.dtab').forEach((b) => {
-      b.classList.toggle('active', b.dataset.tab === activeTab);
-    });
   };
   const selectTab = (tab) => {
     if (tab !== 'comments' && tab !== 'chat') return;
@@ -2581,18 +2587,12 @@ export function mount() {
       togglePick('chat'); // arm element-pick that attaches a context chip
       return;
     }
-    const tab = e.target.closest('[data-act="tab"]');
-    if (tab) {
-      selectTab(tab.dataset.tab);
+    if (e.target.closest('[data-act="open-comments"]')) {
+      selectTab('comments'); // header bubble → Comments sub-view
       return;
     }
-    if (e.target.closest('[data-act="toggle-list"]')) {
-      listCollapsed = !listCollapsed;
-      drawerList.classList.toggle('collapsed', listCollapsed);
-      drawerTabs.classList.toggle('collapsed', listCollapsed);
-      drawerHead.classList.toggle('collapsed', listCollapsed);
-      addNoteBox.classList.toggle('collapsed', listCollapsed);
-      updateCommentsActions(); // hides the action bar while minimized
+    if (e.target.closest('[data-act="comments-back"]')) {
+      selectTab('chat'); // back arrow → Chat home
       return;
     }
     const chatChipX = e.target.closest('[data-act="chat-chip-remove"]');
