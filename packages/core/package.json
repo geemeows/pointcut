@@ -4,6 +4,23 @@
   "description": "Bundler-free, framework-free guts of Pointcut: client, models, drivers, and the Bridge.",
   "type": "module",
   "license": "MIT",
+  "author": "Gazouly",
+  "homepage": "https://github.com/geemeows/pointcut/tree/main/packages/core#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/geemeows/pointcut.git",
+    "directory": "packages/core"
+  },
+  "bugs": "https://github.com/geemeows/pointcut/issues",
+  "keywords": [
+    "pointcut",
+    "design-mode",
+    "ai-agent",
+    "devtools",
+    "bridge",
+    "source-stamp",
+    "jump-to-source"
+  ],
   "engines": {
     "node": ">=18"
   },
@@ -17,6 +34,7 @@
       "import": "./dist/client/index.js"
     },
     "./models": {
+      "types": "./dist/models/index.d.ts",
       "import": "./dist/models/index.js"
     }
   },

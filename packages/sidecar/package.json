@@ -4,6 +4,24 @@
   "description": "Standalone Node server mounting the Pointcut Bridge for dev-server-less setups (a peer to auto-attach, not a fallback).",
   "type": "module",
   "license": "MIT",
+  "author": "Gazouly",
+  "homepage": "https://github.com/geemeows/pointcut/tree/main/packages/sidecar#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/geemeows/pointcut.git",
+    "directory": "packages/sidecar"
+  },
+  "bugs": "https://github.com/geemeows/pointcut/issues",
+  "keywords": [
+    "pointcut",
+    "design-mode",
+    "ai-agent",
+    "devtools",
+    "bridge",
+    "sidecar",
+    "esbuild",
+    "rollup"
+  ],
   "engines": {
     "node": ">=18"
   },

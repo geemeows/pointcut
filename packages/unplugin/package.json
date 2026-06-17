@@ -4,6 +4,27 @@
   "description": "Universal transform/inject + dev-server auto-attach for Pointcut, across all bundlers via unplugin.",
   "type": "module",
   "license": "MIT",
+  "author": "Gazouly",
+  "homepage": "https://github.com/geemeows/pointcut/tree/main/packages/unplugin#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/geemeows/pointcut.git",
+    "directory": "packages/unplugin"
+  },
+  "bugs": "https://github.com/geemeows/pointcut/issues",
+  "keywords": [
+    "pointcut",
+    "unplugin",
+    "vite",
+    "webpack",
+    "rspack",
+    "esbuild",
+    "rollup",
+    "farm",
+    "design-mode",
+    "ai-agent",
+    "source-stamp"
+  ],
   "engines": {
     "node": ">=18"
   },
