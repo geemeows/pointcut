@@ -9,8 +9,10 @@
 // Flow: Pick mode highlights elements on hover and locks one on click — or drag
 // a marquee to annotate a whole area. Each saved Annotation has a type tag and
 // accumulates in a Session/Queue persisted to localStorage. Numbered bubbles pin
-// to annotated spots. A tabbed drawer holds Comments (the Queue) and Chat (a
-// continuous discuss session). "Export" downloads a paste-and-go markdown
+// to annotated spots. A tabbed side panel holds Comments (the Queue) and Chat
+// (a continuous discuss session); it toggles from the toolbar and is non-modal —
+// no backdrop, and clicking the page leaves it open (close it from the toolbar
+// or its own close button). "Export" downloads a paste-and-go markdown
 // Handoff; "Send to agent" streams the chosen agent's Actions back through the
 // Bridge. The source loc is clickable to open the file in your editor.
 //
@@ -249,10 +251,6 @@ export function mount() {
         display: none; align-items: center; justify-content: center; box-sizing: border-box;
       }
       .cbadge.show { display: flex; }
-      .scrim {
-        position: fixed; inset: 0; pointer-events: auto; background: rgba(0,0,0,.28); display: none;
-      }
-      .scrim.open { display: block; }
       .drawer {
         position: fixed; top: 0; right: 0; height: 100%; width: 384px; max-width: 92vw;
         pointer-events: auto; background: #161719; color: #fff; box-sizing: border-box;
@@ -264,7 +262,9 @@ export function mount() {
         display: flex; align-items: center; gap: 8px; padding: 16px 18px;
         border-bottom: 1px solid rgba(255,255,255,.08); flex: none;
       }
-      .drawer-head .dtitle { font-size: 15px; font-weight: 600; }
+      .drawer-head .dbrand { padding: 0; gap: 6px; }
+      .drawer-head .dbrand svg { height: 26px; }
+      .drawer-head .dbrand .brand-name { font-size: 16px; }
       .drawer-head .dcount { font-size: 12px; opacity: .5; }
       .drawer-head .dclose {
         all: unset; cursor: pointer; margin-left: 8px; width: 30px; height: 30px; border-radius: 8px;
@@ -272,49 +272,104 @@ export function mount() {
       }
       .drawer-head .dclose:hover { background: rgba(255,255,255,.08); color: #fff; }
       .drawer-head .dclose svg { width: 17px; height: 17px; }
-      .drawer-head .dmin {
-        all: unset; cursor: pointer; margin-left: auto; width: 30px; height: 30px; border-radius: 8px;
+      /* Header navigation — the Chat view (home) shows the brand + a comments
+         bubble that opens the Comments sub-view; the Comments view swaps in a
+         back arrow + "Comments" heading that returns to Chat. */
+      .dhead-spacer { flex: 1; }
+      .drawer-head .dback, .drawer-head .dbubble {
+        all: unset; cursor: pointer; width: 30px; height: 30px; border-radius: 8px; position: relative;
         display: inline-flex; align-items: center; justify-content: center; color: #cfd5df; flex: none;
       }
-      .drawer-head .dmin:hover { background: rgba(255,255,255,.08); color: #fff; }
-      .drawer-head .dmin svg { width: 16px; height: 16px; transition: transform .15s; }
-      .drawer-head.collapsed .dmin svg { transform: rotate(-90deg); }
-      /* Tab strip — Comments | Chat. Chat is a stub this issue (0008). */
-      .drawer-tabs { flex: none; display: flex; gap: 2px; padding: 0 12px; border-bottom: 1px solid rgba(255,255,255,.08); }
-      .drawer-tabs.collapsed { display: none; }
-      .dtab {
-        appearance: none; background: none; border: none; cursor: pointer;
-        padding: 10px 12px; font: inherit; font-size: 13px; font-weight: 600;
-        color: rgba(231,233,238,.55); border-bottom: 2px solid transparent; margin-bottom: -1px;
+      .drawer-head .dback:hover, .drawer-head .dbubble:hover { background: rgba(255,255,255,.08); color: #fff; }
+      .drawer-head .dback svg, .drawer-head .dbubble svg { width: 18px; height: 18px; }
+      .drawer-head .dhead-title { font-size: 16px; font-weight: 600; color: #fff; }
+      .dbubble-badge {
+        position: absolute; top: -2px; right: -2px; min-width: 15px; height: 15px; padding: 0 4px;
+        border-radius: 8px; background: var(--pc-accent); color: var(--pc-ink); font-size: 10px; font-weight: 700;
+        display: none; align-items: center; justify-content: center; box-sizing: border-box;
       }
-      .dtab:hover { color: #e7e9ee; }
-      .dtab.active { color: #fff; border-bottom-color: var(--pc-accent); }
+      .dbubble-badge.show { display: flex; }
+      /* Chat view (home): brand + bubble; hide the Comments-view affordances. */
+      .drawer.tab-chat .drawer-head .dback,
+      .drawer.tab-chat .drawer-head .dhead-title,
+      .drawer.tab-chat .drawer-head .dcount { display: none; }
+      /* Comments view (sub): back arrow + heading; hide the brand + bubble. */
+      .drawer:not(.tab-chat) .drawer-head .dbrand,
+      .drawer:not(.tab-chat) .drawer-head .dbubble { display: none; }
       /* Chat tab (0010) — a continuous discuss session: transcript + composer
          with an "Apply changes" toggle. Hidden until the Chat tab is active. */
       .chat-pane { display: none; flex: 1 1 0; min-height: 0; flex-direction: column; }
       .drawer.tab-chat .chat-pane { display: flex; }
-      .drawer.tab-chat .drawer-list, .drawer.tab-chat .drawer-stream, .drawer.tab-chat .drawer-composer { display: none; }
+      .drawer.tab-chat .drawer-list, .drawer.tab-chat .drawer-stream, .drawer.tab-chat .drawer-actions, .drawer.tab-chat .add-note-box { display: none; }
+      /* Chat header — start a fresh thread or jump back to a previous one. */
+      .chat-head { flex: none; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 12px; border-bottom: 1px solid rgba(255,255,255,.08); }
+      /* Conversation title — agent-generated from context (falls back to the
+         first message, then "New chat"). The new-chat + history actions are
+         icon-only buttons grouped on the right. */
+      .chat-title { flex: 1 1 auto; min-width: 0; font-size: 13px; font-weight: 600; color: #e7e9ee; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .chat-title.untitled { color: rgba(231,233,238,.5); font-weight: 500; }
+      .chat-head-actions { flex: none; display: flex; align-items: center; gap: 2px; }
+      .chat-hist-wrap { position: relative; }
+      .chat-icon-btn {
+        appearance: none; display: inline-flex; align-items: center; justify-content: center; cursor: pointer;
+        background: none; border: 1px solid transparent; border-radius: 8px; color: rgba(231,233,238,.7);
+        width: 30px; height: 30px; padding: 0;
+      }
+      .chat-icon-btn:hover, .chat-icon-btn.open { background: rgba(255,255,255,.08); color: #e7e9ee; }
+      .chat-icon-btn svg { width: 16px; height: 16px; }
+      .chat-hist-menu {
+        display: none; position: absolute; top: calc(100% + 6px); right: 0; z-index: 5; width: 248px; max-height: 320px; overflow-y: auto;
+        background: #1b1d23; border: 1px solid rgba(255,255,255,.12); border-radius: 10px; padding: 4px;
+        box-shadow: 0 12px 32px rgba(0,0,0,.45);
+      }
+      .chat-hist-menu.open { display: block; }
+      .chat-hist-empty { opacity: .5; font-size: 12px; padding: 10px 12px; text-align: center; }
+      .chat-hist-item {
+        display: flex; align-items: center; gap: 6px; border-radius: 7px; padding: 0 2px 0 0;
+      }
+      .chat-hist-item:hover { background: rgba(255,255,255,.06); }
+      .chat-hist-item.active { background: rgba(255,255,255,.09); }
+      .chat-hist-open {
+        appearance: none; flex: 1 1 auto; min-width: 0; cursor: pointer; text-align: left;
+        background: none; border: none; color: #e7e9ee; font: inherit; font-size: 12px; padding: 8px 8px;
+        white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      }
+      .chat-hist-item.active .chat-hist-open { font-weight: 600; }
+      .chat-hist-del {
+        appearance: none; flex: none; cursor: pointer; background: none; border: none; border-radius: 6px;
+        color: rgba(231,233,238,.45); width: 24px; height: 24px; display: inline-flex; align-items: center; justify-content: center;
+      }
+      .chat-hist-del:hover { background: rgba(255,80,80,.16); color: #ff8a8a; }
+      .chat-hist-del svg { width: 13px; height: 13px; }
       .chat-stream { flex: 1 1 0; min-height: 0; overflow-y: auto; padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; }
       .chat-empty { opacity: .5; text-align: center; padding: 48px 16px; font-size: 13px; line-height: 1.6; }
       .chat-composer { flex: none; position: relative; border-top: 1px solid rgba(255,255,255,.08); padding: 12px; }
       .chat-composer > .cstatus { padding: 0 2px 8px; }
-      /* "Apply changes" toggle — OFF = discuss (propose only), ON = apply this one turn. */
-      .apply-toggle {
-        all: unset; box-sizing: border-box; cursor: pointer; display: inline-flex; align-items: center; gap: 7px;
-        font-size: 12px; color: rgba(231,233,238,.7); user-select: none;
+      /* Attach-element button — picks an on-page element to attach as context.
+         A direct icon button in the composer bar (no menu). */
+      .add-trigger {
+        all: unset; box-sizing: border-box; cursor: pointer; display: inline-flex; align-items: center; justify-content: center;
+        width: 32px; height: 32px; border-radius: 9px; border: 1px solid #2f343c; color: rgba(231,233,238,.8);
+        transition: border-color .12s, background .12s, color .12s;
       }
-      .apply-toggle:hover { color: #e7e9ee; }
-      .apply-switch {
-        flex: none; width: 30px; height: 17px; border-radius: 999px; background: rgba(255,255,255,.16);
-        position: relative; transition: background .15s;
+      .add-trigger svg { width: 17px; height: 17px; }
+      .add-trigger:hover { color: #e7e9ee; background: rgba(255,255,255,.06); }
+      .add-trigger.armed { color: var(--pc-accent); border-color: var(--pc-accent); }
+      /* Agent mode line — Claude-Code-style sticky posture, cycled with Shift+Tab.
+         Sits under the input; clicking it also cycles. discuss = read-only/neutral,
+         apply = accent (the turn will edit files). */
+      .mode-hint {
+        all: unset; box-sizing: border-box; cursor: pointer; align-self: flex-start;
+        display: inline-flex; align-items: center; gap: 6px; padding: 2px 7px; border-radius: 7px;
+        font-size: 11.5px; line-height: 1.45; color: rgba(231,233,238,.5); transition: background .12s, color .12s;
       }
-      .apply-switch::after {
-        content: ''; position: absolute; top: 2px; left: 2px; width: 13px; height: 13px; border-radius: 50%;
-        background: #fff; transition: transform .15s;
-      }
-      .apply-toggle.on .apply-switch { background: var(--pc-accent); }
-      .apply-toggle.on .apply-switch::after { transform: translateX(13px); }
-      .apply-toggle.on { color: var(--pc-accent); }
+      .mode-hint:hover { background: rgba(255,255,255,.06); }
+      .mode-hint .mode-caret { font-weight: 800; letter-spacing: -1.5px; }
+      .mode-hint .mode-name { font-weight: 600; text-transform: lowercase; }
+      .mode-hint .mode-cycle { opacity: .6; }
+      .mode-hint.discuss .mode-caret, .mode-hint.discuss .mode-name { color: rgba(231,233,238,.72); }
+      .mode-hint.apply { color: var(--pc-accent); }
+      .mode-hint.apply .mode-caret, .mode-hint.apply .mode-name { color: var(--pc-accent); }
       /* Per-item send checkbox on a comment card. */
       .crow-check {
         appearance: none; -webkit-appearance: none; flex: none; cursor: pointer;
@@ -328,7 +383,6 @@ export function mount() {
         border: solid var(--pc-ink); border-width: 0 2px 2px 0; transform: rotate(45deg);
       }
       .drawer-list { flex: 1 1 0; min-height: 0; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 10px; }
-      .drawer-list.collapsed { display: none; }
       .drawer-empty { opacity: .5; text-align: center; padding: 48px 16px; font-size: 13px; line-height: 1.6; }
       /* Claude transcript — shares the drawer with the comment list; hidden until used. */
       .drawer-stream {
@@ -364,9 +418,39 @@ export function mount() {
       .mention-empty { padding: 9px; font-size: 12px; color: #8b93a1; }
       .composer-box {
         display: flex; flex-direction: column; gap: 8px; background: #11141a;
-        border: 1px solid #2b313c; border-radius: 12px; padding: 9px 10px;
+        border: 1px solid #2b313c; border-radius: 14px; padding: 12px 12px 10px;
       }
       .composer-box:focus-within { border-color: var(--pc-accent); box-shadow: 0 0 0 3px rgba(182,250,5,.22); }
+      /* Input row: brand spark sits to the left of the first line of the textarea. */
+      .composer-input { position: relative; display: flex; align-items: flex-start; gap: 9px; }
+      .composer-spark { flex: none; width: 18px; height: 18px; margin-top: 2px; color: var(--pc-accent); pointer-events: none; }
+      .composer-spark svg { width: 100%; height: 100%; display: block; }
+      /* "/" slash-menu — project skills/commands the chosen agent can invoke.
+         Pops ABOVE the input (composer sits low in the drawer); opens on "/" at
+         the start of a token, filters as you type. Mirrors .agent-menu styling. */
+      .skill-menu {
+        position: absolute; left: 0; right: 0; bottom: calc(100% + 8px); display: none; flex-direction: column; gap: 1px;
+        max-height: 260px; overflow-y: auto; z-index: 8;
+        background: #1b1d21; border: 1px solid #2b313c; border-radius: 12px; padding: 6px;
+        box-shadow: 0 16px 44px rgba(0,0,0,.55);
+      }
+      .skill-menu.open { display: flex; }
+      .skill-opt {
+        all: unset; box-sizing: border-box; cursor: pointer; display: flex; flex-direction: column; gap: 2px;
+        padding: 7px 9px; border-radius: 8px; color: #e7e9ee;
+      }
+      .skill-opt:hover, .skill-opt.active { background: #2a2c30; }
+      .skill-opt-top { display: flex; align-items: center; gap: 7px; }
+      .skill-opt-name { font-size: 13px; font-weight: 500; }
+      .skill-opt-name b { color: var(--pc-accent); font-weight: 600; } /* matched query span */
+      .skill-opt-kind {
+        font-size: 10px; line-height: 1; text-transform: uppercase; letter-spacing: .04em;
+        color: #8b93a1; border: 1px solid rgba(255,255,255,.12); border-radius: 5px; padding: 2px 4px; flex: none;
+      }
+      .skill-opt-desc {
+        font-size: 11px; color: #8b93a1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%;
+      }
+      .skill-menu-empty { padding: 8px 9px; font-size: 12px; color: #8b93a1; }
       .composer-chips, .chat-chips { display: flex; flex-wrap: wrap; gap: 6px; }
       .composer-chips:empty, .chat-chips:empty { display: none; }
       .chip {
@@ -377,13 +461,15 @@ export function mount() {
         width: 15px; height: 15px; border-radius: 50%; background: var(--pc-accent); color: var(--pc-ink); font-size: 9px;
         font-weight: 700; display: inline-flex; align-items: center; justify-content: center; flex: none;
       }
+      .chip .chip-ico { width: 13px; height: 13px; flex: none; color: var(--pc-accent); opacity: .85; }
       .chip .chip-lbl { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 160px; }
       .chip .chip-x { all: unset; cursor: pointer; opacity: .5; font-size: 14px; line-height: 1; padding: 0 1px; flex: none; }
       .chip .chip-x:hover { opacity: 1; color: #ff8d8d; }
       .composer-box textarea {
-        width: 100%; box-sizing: border-box; min-height: 70px; max-height: 140px; resize: none;
-        background: transparent; color: #fff; border: 0; padding: 2px; font: inherit; font-size: 13px;
+        flex: 1; width: 100%; box-sizing: border-box; min-height: 64px; max-height: 140px; resize: none;
+        background: transparent; color: #fff; border: 0; padding: 0; margin-top: 1px; font: inherit; font-size: 14px; line-height: 1.4;
       }
+      .composer-box textarea::placeholder { color: rgba(231,233,238,.4); }
       .composer-box textarea:focus { outline: none; }
       .composer-bar { display: flex; align-items: center; gap: 10px; }
       .composer-bar .sel-info { font-size: 11px; opacity: .5; }
@@ -397,13 +483,8 @@ export function mount() {
       .dsend svg { width: 16px; height: 16px; display: block; }
       .crow {
         position: relative; background: #1a1b1e; border: 1px solid rgba(255,255,255,.07); border-radius: 16px;
-        padding: 12px 14px 14px; display: flex; flex-direction: column; gap: 12px;
+        overflow: hidden; display: flex; flex-direction: column;
         transition: border-color .12s, background .12s;
-      }
-      /* Brand accent rail down the left edge — the card's identity marker. */
-      .crow::before {
-        content: ''; position: absolute; left: 0; top: 12px; bottom: 12px; width: 3px;
-        border-radius: 0 3px 3px 0; background: var(--pc-accent); box-shadow: 0 0 10px rgba(182,250,5,.55);
       }
       .crow:hover { border-color: rgba(255,255,255,.14); background: #1d1e22; }
       .crow-detail { display: flex; flex-direction: column; gap: 8px; }
@@ -421,12 +502,11 @@ export function mount() {
       }
       .crow-top .src { margin-bottom: 0; min-width: 0; flex: 1; border: 1px solid rgba(255,255,255,.1); }
       /* Labeled Edit / Dismiss buttons — quiet until the row is hovered. */
-      .crow-tools { display: flex; gap: 6px; flex: none; opacity: 0; transition: opacity .12s; }
-      .crow:hover .crow-tools, .crow:focus-within .crow-tools { opacity: 1; }
+      .crow-tools { display: flex; gap: 6px; flex: none; }
       .crow-act {
         all: unset; box-sizing: border-box; cursor: pointer; flex: none;
-        display: inline-flex; align-items: center; gap: 6px; padding: 6px 11px;
-        border-radius: 9px; font-size: 12px; font-weight: 600;
+        display: inline-flex; align-items: center; justify-content: center; padding: 6px;
+        border-radius: 8px; font-size: 12px; font-weight: 600;
         color: var(--pc-accent); border: 1px solid rgba(182,250,5,.3); background: rgba(182,250,5,.06);
         transition: background .12s, border-color .12s, color .12s;
       }
@@ -444,12 +524,91 @@ export function mount() {
         color: #e7e9ee; border-left: 3px solid rgba(255,255,255,.16); background: rgba(255,255,255,.035);
         border-radius: 0 7px 7px 0; padding: 8px 11px;
       }
-      /* Drawer comment box — full bordered field, matching the mockup. */
+      /* Drawer comment body — plain text panel below the head divider. */
       .crow-body {
         margin: 0; font-size: 14px; line-height: 1.5; white-space: pre-wrap; word-break: break-word;
-        color: #e7e9ee; border: 1px solid rgba(255,255,255,.1); background: rgba(255,255,255,.02);
-        border-radius: 10px; padding: 11px 13px; min-height: 22px;
+        color: #e7e9ee; padding: 12px 14px; min-height: 22px;
       }
+      /* ---- Comments tab revamp ------------------------------------------- */
+      /* Top action bar (replaces the old foot composer): selection count, Add
+         note, and Send to agent. Sits above the scrolling list, and only shows
+         once at least one comment is checked. */
+      .drawer-actions {
+        flex: none; display: none; align-items: center; gap: 8px; padding: 10px 12px;
+        border-bottom: 1px solid rgba(255,255,255,.08);
+      }
+      .drawer-actions.show { display: flex; }
+      .drawer-actions .sel-info { font-size: 12px; color: #8b93a1; }
+      .actbtn {
+        all: unset; box-sizing: border-box; cursor: pointer; margin-left: auto;
+        font-size: 12px; font-weight: 600; color: #cfd5df; padding: 7px 11px; border-radius: 9px;
+        transition: background .12s, color .12s;
+      }
+      .actbtn:hover { background: rgba(255,255,255,.07); color: #fff; }
+      .send-claude {
+        all: unset; box-sizing: border-box; cursor: pointer; flex: none; display: inline-flex;
+        align-items: center; gap: 7px; padding: 7px 12px; border-radius: 10px;
+        background: var(--pc-accent); color: var(--pc-ink); font-size: 12px; font-weight: 600;
+        transition: background .12s;
+      }
+      .send-claude:hover { background: var(--pc-accent-hover); }
+      .send-claude[disabled] { background: rgba(182,250,5,.3); color: rgba(24,26,14,.5); cursor: not-allowed; }
+      .send-claude svg { width: 14px; height: 14px; display: block; }
+      /* Add-note input — drops below the action bar when "Add note" is clicked. */
+      .add-note-box { flex: none; display: none; flex-direction: column; gap: 8px; padding: 10px 12px; border-bottom: 1px solid rgba(255,255,255,.08); }
+      .add-note-box.open { display: flex; }
+      .mini-input {
+        width: 100%; box-sizing: border-box; min-height: 54px; max-height: 140px; resize: none;
+        background: #11141a; color: #fff; border: 1px solid #2b313c; border-radius: 10px;
+        padding: 8px 9px; font: inherit; font-size: 13px;
+      }
+      .mini-input:focus { outline: none; border-color: var(--pc-accent); box-shadow: 0 0 0 3px rgba(182,250,5,.22); }
+      .mini-actions { display: flex; gap: 8px; justify-content: flex-end; }
+      .mini-btn {
+        all: unset; box-sizing: border-box; cursor: pointer; padding: 7px 13px; border-radius: 9px;
+        font-size: 12px; font-weight: 600; background: var(--pc-accent); color: var(--pc-ink);
+        transition: background .12s;
+      }
+      .mini-btn:hover { background: var(--pc-accent-hover); }
+      .mini-btn[disabled] { opacity: .4; cursor: not-allowed; }
+      .mini-btn.ghost { background: #2a2c30; color: #e7e9ee; }
+      .mini-btn.ghost:hover { background: #363940; }
+      /* Filename chip in the card head — boxed, with the file icon in its own
+         faint inner square. */
+      .crow .src {
+        margin: 0; min-width: 0; padding: 5px 9px; border-radius: 9px; font-size: 12px;
+        background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.08); color: #cfd5df;
+      }
+      .crow .src svg {
+        width: 12px; height: 12px; padding: 3px; border-radius: 5px; box-sizing: content-box;
+        background: rgba(255,255,255,.06); opacity: .85;
+      }
+      /* Filename chip + divider + relative time, sharing the left of the head. */
+      .crow-meta { display: flex; align-items: center; gap: 10px; min-width: 0; flex: 1; }
+      .crow-divider { width: 1px; height: 18px; background: rgba(255,255,255,.12); flex: none; }
+      /* Comment card head — filename + time on the left, Selected + tools on the right. */
+      .crow-head {
+        display: flex; align-items: center; gap: 10px; padding: 10px 12px;
+        border-bottom: 1px solid rgba(255,255,255,.07);
+      }
+      .crow-time { font-size: 12px; color: #8b93a1; flex: none; }
+      .crow-resolve {
+        all: unset; box-sizing: border-box; cursor: pointer; flex: none;
+        display: inline-flex; align-items: center; color: #8b93a1; transition: color .12s;
+      }
+      .crow-resolve:hover { color: #e7e9ee; }
+      .crow-resolve-box {
+        width: 18px; height: 18px; border-radius: 5px; border: 1.5px solid rgba(255,255,255,.22);
+        display: inline-flex; align-items: center; justify-content: center; flex: none; position: relative;
+      }
+      .crow-resolve:hover .crow-resolve-box { border-color: rgba(255,255,255,.4); }
+      /* Selected = brand-tinted box with a chartreuse check (outline, not filled). */
+      .crow-resolve-box.on { border-color: var(--pc-accent); background: rgba(182,250,5,.08); }
+      .crow-resolve-box.on::after {
+        content: ''; position: absolute; left: 6px; top: 2.5px; width: 4px; height: 8px;
+        border: solid var(--pc-accent); border-width: 0 2px 2px 0; transform: rotate(45deg);
+      }
+      .crow.selected { border-color: rgba(255,255,255,.12); }
       .panel {
         position: fixed; pointer-events: auto; display: none;
         background: #1b1d21; color: #fff; padding: 14px; border-radius: 14px;
@@ -640,14 +799,74 @@ export function mount() {
       .agent-opt.sel .agent-opt-check { opacity: 1; }
       /* Drawer-composer instance: shorter (matches the 32px send button), menu
          right-aligned to the trigger, and pushed beside the send button. */
-      .composer-bar .agent-pick { margin-left: auto; }
-      .composer-bar .dsend { margin-left: 0; } /* picker's auto already right-aligns the group */
+      .composer-bar .add-trigger { margin-right: auto; } /* attach left; model pill + send float right */
+      .composer-bar .dsend { margin-left: 0; }
       .agent-pick.sm .agent-trigger {
         height: 32px; border-radius: 9px; padding: 0 8px; gap: 6px; font-size: 12px;
         min-width: 0; max-width: 150px;
       }
       .agent-pick.sm .agent-icon, .agent-pick.sm .agent-chev { width: 14px; height: 14px; }
       .agent-pick.right .agent-menu { left: auto; right: 0; }
+      /* Settings (gear) menu — a native-style context menu that pops above the
+         bar; the "Default model" row opens a flyout submenu listing every model
+         (grouped per agent by a horizontal divider label, not nested), then the
+         destructive "Delete all comments" action. */
+      .gear-pick { position: relative; display: inline-flex; flex: none; }
+      .gear-menu {
+        position: absolute; right: 0; bottom: calc(100% + 8px); display: none; flex-direction: column; gap: 2px;
+        min-width: 230px; z-index: 6; background: #1b1d21; border: 1px solid #2b313c; border-radius: 12px;
+        padding: 6px; box-shadow: 0 16px 44px rgba(0,0,0,.55);
+      }
+      .gear-menu.open { display: flex; }
+      .gear-sep { height: 1px; background: rgba(255,255,255,.08); margin: 4px 2px; }
+      .gear-item {
+        all: unset; box-sizing: border-box; cursor: pointer; display: flex; align-items: center; gap: 10px;
+        padding: 9px 10px; border-radius: 8px; color: #e7e9ee; font-size: 13px;
+      }
+      .gear-item:hover { background: #2a2c30; }
+      .gear-item > svg:first-child { width: 16px; height: 16px; flex: none; opacity: .8; }
+      .gear-item.danger { color: #ff8d8d; }
+      .gear-item.danger:hover { background: rgba(255,90,90,.12); }
+      .gear-item-label { flex: 1; white-space: nowrap; }
+      .gear-model-val {
+        color: #8b93a1; font-size: 12px; white-space: nowrap;
+        max-width: 110px; overflow: hidden; text-overflow: ellipsis;
+      }
+      .gear-chev { width: 15px; height: 15px; flex: none; opacity: .55; margin-right: -2px; }
+      /* Flyout submenu — opens to the RIGHT by default; .flip-left swaps it to
+         the left when the bar sits too near the viewport's right edge (decided
+         in JS when the gear menu opens). A transparent bridge (::after) spans
+         the gap on the flyout's near side so the pointer keeps :hover while
+         crossing from the row to the flyout. */
+      .gear-sub { position: relative; }
+      .gear-flyout {
+        position: absolute; left: calc(100% + 6px); top: -6px; display: none; flex-direction: column; gap: 1px;
+        min-width: 168px; max-height: 320px; overflow-y: auto; z-index: 7;
+        background: #1b1d21; border: 1px solid #2b313c; border-radius: 12px;
+        padding: 6px; box-shadow: 0 16px 44px rgba(0,0,0,.55);
+      }
+      .gear-flyout::after { content: ''; position: absolute; top: 0; bottom: 0; left: -6px; width: 6px; }
+      .gear-sub.flip-left > .gear-flyout { left: auto; right: calc(100% + 6px); }
+      .gear-sub.flip-left > .gear-flyout::after { left: auto; right: -6px; }
+      .gear-sub:hover > .gear-flyout { display: flex; }
+      .gear-sub:hover > .gear-item { background: #2a2c30; }
+      /* Group header: agent name flanked by inline divider lines (no nesting). */
+      .gear-group-label {
+        display: flex; align-items: center; gap: 8px;
+        font-size: 12px; color: #8b93a1; text-transform: capitalize; user-select: none;
+        margin: 2px 0; padding: 6px 3px;
+      }
+      .gear-group-label::before { content: ''; flex: none; width: 14px; height: 1px; background: rgba(255,255,255,.08); }
+      .gear-group-label::after { content: ''; flex: 1; height: 1px; background: rgba(255,255,255,.08); }
+      .gear-opt {
+        all: unset; box-sizing: border-box; cursor: pointer; display: flex; align-items: center; gap: 8px;
+        padding: 8px 9px; border-radius: 8px; color: #e7e9ee; font-size: 13px; white-space: nowrap;
+      }
+      .gear-opt:hover { background: #2a2c30; }
+      .gear-opt-check { width: 14px; height: 14px; flex: none; opacity: 0; }
+      .gear-opt.sel { color: var(--pc-accent); }
+      .gear-opt.sel .gear-opt-check { opacity: 1; }
+      .gear-opt-label { flex: 1; }
       /* Send: the primary "Go" — lemon active accent, set apart from neutral tools. */
       .icon-btn.send { background: var(--pc-accent); color: var(--pc-ink); }
       .icon-btn.send:hover { background: var(--pc-accent-hover); }
@@ -670,7 +889,29 @@ export function mount() {
       .evt { display: flex; gap: 8px; line-height: 1.5; word-break: break-word; font-size: 13px; }
       .evt .ic { flex: none; opacity: .55; font-family: ui-monospace, monospace; }
       .evt.tool .ic { color: var(--pc-accent); opacity: 1; }
-      .evt.text { color: #cfd5df; white-space: pre-wrap; }
+      .evt.text { color: #cfd5df; }
+      .evt .msg { min-width: 0; }
+      .evt.text .msg { display: block; }
+      .evt.text code { overflow-wrap: anywhere; }
+      .evt.text .msg > :first-child { margin-top: 0; }
+      .evt.text .msg > :last-child { margin-bottom: 0; }
+      .evt.text p { margin: 0 0 8px; }
+      .evt.text h1, .evt.text h2, .evt.text h3, .evt.text h4, .evt.text h5, .evt.text h6 {
+        margin: 12px 0 6px; font-size: 13px; font-weight: 700; color: #e7e9ee;
+      }
+      .evt.text strong { color: #fff; font-weight: 600; }
+      .evt.text em { font-style: italic; }
+      .evt.text code {
+        font-family: ui-monospace, monospace; font-size: 12px; background: #2a2c30;
+        padding: 1px 4px; border-radius: 4px; color: #d7c3a0;
+      }
+      .evt.text pre {
+        margin: 0 0 8px; background: #16181c; border: 1px solid #2a2c30; border-radius: 6px;
+        padding: 8px 10px; overflow-x: auto;
+      }
+      .evt.text pre code { background: none; padding: 0; border-radius: 0; color: #cfd5df; white-space: pre; }
+      .evt.text ul { margin: 0 0 8px; padding-left: 18px; list-style: disc; }
+      .evt.text li { margin: 2px 0; }
       .evt.you { color: #fff; }
       .evt.you .ic { color: var(--pc-accent); opacity: 1; }
       .evt.tool code { font-family: ui-monospace, monospace; color: #aeb6c2; }
@@ -781,35 +1022,69 @@ export function mount() {
         </div>
       </div>
 
-      <div class="scrim"></div>
       <aside class="drawer">
         <div class="drawer-head">
-          <span class="clogo" title="Agent">${AGENT_ICON}</span>
-          <span class="dtitle">Comments</span>
+          <button class="dback" data-act="comments-back" title="Back to chat" aria-label="Back to chat">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
+          </button>
+          <span class="brand dbrand" title="Pointcut">${SPARK_ICON}<span class="brand-name">Pointcut</span></span>
+          <span class="dhead-title">Comments</span>
           <span class="dcount"></span>
-          <button class="dmin" data-act="toggle-list" title="Minimize comments">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+          <span class="dhead-spacer"></span>
+          <button class="dbubble" data-act="open-comments" title="Comments" aria-label="Comments">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M8 9h8M8 13h5"/></svg>
+            <span class="dbubble-badge">0</span>
           </button>
           <button class="dclose" data-act="drawer-close" title="Close">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
           </button>
         </div>
-        <div class="drawer-tabs">
-          <button class="dtab active" data-act="tab" data-tab="comments">Comments</button>
-          <button class="dtab" data-act="tab" data-tab="chat">Chat</button>
+        <div class="drawer-actions">
+          <span class="sel-info"></span>
+          <button class="actbtn" data-act="add-note">Add note</button>
+          <button class="send-claude" data-act="comments-send" title="Send to agent">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4 20-7z"/></svg>
+            <span>Send to agent</span>
+          </button>
+        </div>
+        <div class="add-note-box">
+          <textarea class="mini-input" placeholder="How should the agent apply these? (optional)"></textarea>
         </div>
         <div class="drawer-list"></div>
         <div class="drawer-stream"></div>
         <div class="chat-pane">
+          <div class="chat-head">
+            <span class="chat-title untitled" title="">New chat</span>
+            <div class="chat-head-actions">
+              <button class="chat-icon-btn" data-act="chat-new" title="Start a new chat" aria-label="Start a new chat">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
+              </button>
+              <div class="chat-hist-wrap">
+                <button class="chat-icon-btn chat-hist-btn" data-act="chat-history-toggle" title="Previous chats" aria-label="Previous chats" aria-expanded="false">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v5h5"/><path d="M3.05 13A9 9 0 1 0 6 5.3L3 8"/><path d="M12 7v5l4 2"/></svg>
+                </button>
+                <div class="chat-hist-menu"></div>
+              </div>
+            </div>
+          </div>
           <div class="chat-stream"></div>
           <div class="chat-composer">
             <span class="cstatus"><span class="cstat-logo">${AGENT_ICON}</span><span class="cstat-text"></span></span>
             <div class="composer-box">
               <div class="chat-chips"></div>
-              <textarea placeholder="Ask about this page…  (⌘/Ctrl+Enter to send · Pick to attach an element)"></textarea>
+              <div class="composer-input">
+                <span class="composer-spark" aria-hidden="true">${SPARK_ICON}</span>
+                <textarea placeholder="Ask about this page…"></textarea>
+                <div class="skill-menu" role="listbox" aria-label="Project skills"></div>
+              </div>
+              <button class="mode-hint discuss" data-act="chat-mode" type="button" title="Cycle agent mode (Shift+Tab)" aria-label="Cycle agent mode">
+                <span class="mode-caret" aria-hidden="true">⏵⏵</span>
+                <span class="mode-name">discuss mode</span>
+                <span class="mode-cycle">(shift+tab to cycle)</span>
+              </button>
               <div class="composer-bar">
-                <button class="apply-toggle" data-act="chat-apply" title="Apply changes this turn (otherwise propose only)" aria-pressed="false">
-                  <span class="apply-switch"></span><span>Apply changes</span>
+                <button class="add-trigger" data-act="chat-pick" title="Attach an element on the page as context" aria-label="Attach element" aria-pressed="false">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8V5a2 2 0 0 1 2-2h3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M21 16v3a2 2 0 0 1-2 2h-3"/><circle cx="12" cy="12" r="2.5"/></svg>
                 </button>
                 <div class="agent-pick sm right">
                   <button class="agent-trigger" data-act="agent-toggle" title="Coding agent" aria-label="Coding agent">
@@ -820,31 +1095,9 @@ export function mount() {
                   <div class="agent-menu"></div>
                 </div>
                 <button class="dsend" data-act="chat-send" title="Send to agent">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4 20-7z"/></svg>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5"/><path d="m5 12 7-7 7 7"/></svg>
                 </button>
               </div>
-            </div>
-          </div>
-        </div>
-        <div class="drawer-composer">
-          <div class="mention-pop"></div>
-          <span class="cstatus"><span class="cstat-logo">${AGENT_ICON}</span><span class="cstat-text"></span></span>
-          <div class="composer-box">
-            <div class="composer-chips"></div>
-            <textarea placeholder="Message agent…  (@ to reference a comment · ⌘/Ctrl+Enter to send)"></textarea>
-            <div class="composer-bar">
-              <span class="sel-info"></span>
-              <div class="agent-pick sm right">
-                <button class="agent-trigger" data-act="agent-toggle" title="Coding agent" aria-label="Coding agent">
-                  <svg class="agent-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="16" height="16" x="4" y="4" rx="2"/><rect width="6" height="6" x="9" y="9" rx="1"/><path d="M15 2v2"/><path d="M15 20v2"/><path d="M2 15h2"/><path d="M2 9h2"/><path d="M20 15h2"/><path d="M20 9h2"/><path d="M9 2v2"/><path d="M9 20v2"/></svg>
-                  <span class="agent-trigger-label"></span>
-                  <svg class="agent-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
-                </button>
-                <div class="agent-menu"></div>
-              </div>
-              <button class="dsend" data-act="composer-send" title="Send to agent">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4 20-7z"/></svg>
-              </button>
             </div>
           </div>
         </div>
@@ -870,26 +1123,33 @@ export function mount() {
         <span class="divider"></span>
         <button class="tool" data-act="pick" title="Pick element / region">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8V5a2 2 0 0 1 2-2h3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M21 16v3a2 2 0 0 1-2 2h-3"/><circle cx="12" cy="12" r="2.5"/></svg>
-          <span class="lbl">Pick</span><span class="kbd">${KBD('S')}</span>
+          <span class="lbl">Pick</span><span class="kbd">${KBD("S")}</span>
         </button>
-        <button class="icon-btn" data-act="comments" data-tip="Show comments  ${KBD('C')}">
+        <button class="icon-btn" data-act="comments" data-tip="Toggle comments  ${KBD("C")}">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M8 9h8M8 13h5"/></svg>
           <span class="cbadge">0</span>
         </button>
-        <button class="icon-btn danger" data-act="clear" data-tip="Delete all comments">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M10 11v6M14 11v6"/></svg>
-        </button>
-        <div class="agent-pick">
-          <button class="agent-trigger" data-act="agent-toggle" title="Coding agent" aria-label="Coding agent">
-            <svg class="agent-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="16" height="16" x="4" y="4" rx="2"/><rect width="6" height="6" x="9" y="9" rx="1"/><path d="M15 2v2"/><path d="M15 20v2"/><path d="M2 15h2"/><path d="M2 9h2"/><path d="M20 15h2"/><path d="M20 9h2"/><path d="M9 2v2"/><path d="M9 20v2"/></svg>
-            <span class="agent-trigger-label"></span>
-            <svg class="agent-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+        <div class="gear-pick">
+          <button class="icon-btn" data-act="gear-toggle" data-tip="Settings">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
           </button>
-          <div class="agent-menu"></div>
+          <div class="gear-menu">
+            <div class="gear-sub">
+              <button class="gear-item" data-act="model-sub" aria-haspopup="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="16" height="16" x="4" y="4" rx="2"/><rect width="6" height="6" x="9" y="9" rx="1"/><path d="M15 2v2"/><path d="M15 20v2"/><path d="M2 15h2"/><path d="M2 9h2"/><path d="M20 15h2"/><path d="M20 9h2"/><path d="M9 2v2"/><path d="M9 20v2"/></svg>
+                <span class="gear-item-label">Default model</span>
+                <span class="gear-model-val"></span>
+                <svg class="gear-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+              </button>
+              <div class="gear-flyout gear-model-menu"></div>
+            </div>
+            <div class="gear-sep"></div>
+            <button class="gear-item danger" data-act="clear">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M10 11v6M14 11v6"/></svg>
+              <span>Delete all comments</span>
+            </button>
+          </div>
         </div>
-        <button class="icon-btn send" data-act="send" data-tip="Send to agent  ${KBD('G')}">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/><path d="M20 3v4"/><path d="M22 5h-4"/><path d="M4 17v2"/><path d="M5 18H3"/></svg>
-        </button>
         <span class="divider"></span>
         <button class="icon-btn" data-act="collapse" data-tip="Collapse">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14h6m0 0v6m0-6-7 7"/><path d="M20 10h-6m0 0V4m0 6 7-7"/></svg>
@@ -905,33 +1165,43 @@ export function mount() {
   const marquee = $('.marquee');
   const bubblesWrap = $('.bubbles');
   const bar = $('.bar');
+  const commentsBtn = $('.bar [data-act="comments"]');
   const grip = $('.bar .grip');
   const puck = $('.bar .puck');
   const pickBtn = $('.bar [data-act="pick"]');
-  const sendBtn = $('.bar [data-act="send"]');
   const countBadge = $('.cbadge');
-  const clearBtn = $('.bar [data-act="clear"]');
-  const scrim = $('.scrim');
+  const gearWrap = $('.bar .gear-pick');
+  const gearMenu = $('.bar .gear-menu');
   const drawer = $('.drawer');
   const drawerList = $('.drawer-list');
   const drawerCount = $('.drawer-head .dcount');
   const stream = $('.drawer-stream');
-  const drawerHead = $('.drawer-head');
-  const drawerTabs = $('.drawer-tabs');
+  const drawerBubbleBadge = $('.drawer-head .dbubble-badge');
   const cpanel = $('.cpanel');
   const cpanelLog = $('.cpanel .clog');
-  // Each surface is independent: a run streams into the drawer OR the floating
-  // panel, never both. `surface` ({ log, status }) is set per run to the chosen
-  // one, so cLog/setStatus write only there.
-  const drawerStatus = $('.drawer-composer .cstatus');
+  // Each surface is independent: a run streams into the chat transcript OR the
+  // floating panel, never both. `surface` ({ log, status }) is set per run to
+  // the chosen one, so cLog/setStatus write only there.
   const panelStatus = $('.cpanel .cstatus');
   // Chat tab (0010): its own transcript surface + composer.
   const chatStream = $('.chat-stream');
   const chatText = $('.chat-composer textarea');
   const chatSend = $('.chat-composer [data-act="chat-send"]');
   const chatStatus = $('.chat-composer .cstatus');
-  const chatApplyBtn = $('.chat-composer [data-act="chat-apply"]');
+  const chatModeHint = $('.chat-composer [data-act="chat-mode"]');
+  const chatPickBtn = $('.chat-composer [data-act="chat-pick"]');
   const chatChips = $('.chat-composer .chat-chips');
+  const chatSkillMenu = $('.chat-composer .skill-menu');
+  const chatTitle = $('.chat-head .chat-title');
+  // Chat history — "New chat" + a dropdown listing previous conversations.
+  const chatHistWrap = $('.chat-head .chat-hist-wrap');
+  const chatHistBtn = $('.chat-head [data-act="chat-history-toggle"]');
+  const chatHistMenu = $('.chat-head .chat-hist-menu');
+  const closeChatHistory = () => {
+    chatHistMenu.classList.remove('open');
+    chatHistBtn.classList.remove('open');
+    chatHistBtn.setAttribute('aria-expanded', 'false');
+  };
   let surface = null;
   // The selected coding Agent + model (picker value) and the list the bridge says
   // are installed (each { name, models:[{label,value}] }). selectedAgent gates
@@ -939,11 +1209,17 @@ export function mount() {
   let selectedAgent = null;
   let selectedModel = '';
   let availableAgents = [];
-  const composerText = $('.drawer-composer textarea');
-  const composerSend = $('.drawer-composer [data-act="composer-send"]');
-  const composerChips = $('.composer-chips');
-  const mentionPop = $('.mention-pop');
-  const selInfo = $('.drawer-composer .sel-info');
+  // Skills/commands the chosen agent can invoke at the project root (the "/" menu).
+  // Fetched per agent from the Bridge's skills-probe; cached client-side by agent.
+  let availableSkills = [];
+  const skillsByAgent = Object.create(null);
+  // Comments-tab top action bar (replaces the old foot composer).
+  const drawerActions = $('.drawer-actions');
+  const selInfo = $('.drawer-actions .sel-info');
+  const commentsSend = $('.drawer-actions [data-act="comments-send"]');
+  const addNoteBtn = $('.drawer-actions [data-act="add-note"]');
+  const addNoteBox = $('.add-note-box');
+  const addNoteText = $('.add-note-box textarea');
 
   const note = $('.note');
   const noteSrc = note.querySelector('.src');
@@ -966,11 +1242,14 @@ export function mount() {
   const popBody = popover.querySelector('.body');
 
   let picking = false;
+  // What a pick does on click: 'comment' (open a note — the toolbar Pick) or
+  // 'chat' (attach the element to the chat draft — the composer's Select button).
+  let pickMode = 'comment';
   let agentRunning = false;
   let agentErrored = false;
-  let listCollapsed = false; // drawer "minimize" — hides the comment cards
-  // Active drawer tab ('comments' | 'chat'); Chat is a stub this issue (0008).
-  let activeTab = 'comments';
+  // Active drawer view ('chat' | 'comments'). Chat is home; the header's
+  // comments bubble opens Comments, whose back arrow returns here.
+  let activeTab = 'chat';
   try {
     const t = localStorage.getItem(TAB_KEY);
     if (t === 'comments' || t === 'chat') activeTab = t;
@@ -979,8 +1258,9 @@ export function mount() {
   let agentStartAt = 0; // run start timestamp, for the "Brewed for …" elapsed time
   let openTextMsg = null; // the .msg node currently accumulating streamed prose deltas
   let openTextBuf = ''; // its accumulated text so far
-  let selectedIds = []; // comments @-referenced in the composer, in insertion order (default = none)
-  let sentIds = []; // ids dispatched in the current run — removed on success
+  let sentIds = []; // ids dispatched in the current panel run — removed on success
+  let selectedIds = []; // comments checked in the Comments tab (default none); drives the action bar
+  let pendingResolveIds = []; // comments handed to Chat via "Send to agent" — deleted on success
   let pending = null; // what we're about to annotate: {el} | {region} | {editId}
   // Active spacing-control session for the open note: the model session, the
   // property, and the element's original inline value so a cancel restores it.
@@ -1022,12 +1302,26 @@ export function mount() {
     srcEl.dataset.loc = loc || '';
   };
 
+  // Coarse relative timestamp for a comment ("just now", "21h ago"). Comments
+  // predating the createdAt field (legacy records) show no time.
+  const relTime = (ts) => {
+    if (!ts) return '';
+    const s = Math.round((Date.now() - ts) / 1000);
+    if (s < 45) return 'just now';
+    const m = Math.round(s / 60);
+    if (m < 60) return `${m}m ago`;
+    const h = Math.round(m / 60);
+    if (h < 24) return `${h}h ago`;
+    const d = Math.round(h / 24);
+    if (d < 7) return `${d}d ago`;
+    const w = Math.round(d / 7);
+    return `${w}w ago`;
+  };
+
   const refreshCount = () => {
     const n = Q.count();
     countBadge.textContent = String(n);
     countBadge.classList.toggle('show', n > 0);
-    clearBtn.disabled = n === 0;
-    sendBtn.disabled = n === 0 || agentRunning || !selectedAgent;
     if (drawerOpen) renderDrawer();
   };
 
@@ -1432,6 +1726,7 @@ export function mount() {
     const id = Q.newId();
     const a = {
       id, type: selectedType, comment,
+      author: 'You', createdAt: Date.now(), replies: [],
       loc: '', path: null, label: '', outerHTML: '', styles: {}, region: null,
     };
     if (pending && pending.el) {
@@ -1567,6 +1862,68 @@ export function mount() {
   // it in. The client stays agent-agnostic — it only consumes Actions.
   const escHtml = (s) =>
     String(s).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+  // Minimal, dependency-free markdown → HTML for assistant prose. Handles the
+  // subset agents actually emit (headings, bold/italic, inline + fenced code,
+  // bullet lists, paragraphs). Everything is HTML-escaped first, so agent output
+  // can never inject markup. Kept inline to stay clean-room / zero-dependency.
+  const renderMd = (src) => {
+    const blocks = [];
+    let text = String(src).replace(/\r\n/g, '\n');
+    // Pull fenced code out first so its body isn't markdown-processed. Match
+    // closed fences, then a dangling open fence (mid-stream) up to end of text.
+    text = text.replace(/```[^\n]*\n?([\s\S]*?)```/g, (_m, code) => {
+      blocks.push(code.replace(/\n+$/, ''));
+      return ` CB${blocks.length - 1} `;
+    });
+    text = text.replace(/```[^\n]*\n?([\s\S]*)$/, (_m, code) => {
+      blocks.push(code.replace(/\n+$/, ''));
+      return ` CB${blocks.length - 1} `;
+    });
+    const inline = (s) =>
+      escHtml(s)
+        .replace(/`([^`]+)`/g, (_m, c) => `<code>${c}</code>`)
+        .replace(/\*\*([^*]+?)\*\*/g, '<strong>$1</strong>')
+        .replace(/(^|[^*])\*([^*]+?)\*/g, '$1<em>$2</em>');
+    const out = [];
+    let para = [];
+    let list = [];
+    const flushPara = () => {
+      if (para.length) out.push(`<p>${para.map(inline).join('<br>')}</p>`);
+      para = [];
+    };
+    const flushList = () => {
+      if (list.length) out.push(`<ul>${list.map((li) => `<li>${inline(li)}</li>`).join('')}</ul>`);
+      list = [];
+    };
+    text.split('\n').forEach((raw) => {
+      const line = raw.replace(/\s+$/, '');
+      const cb = line.match(/^ CB(\d+) $/);
+      const h = line.match(/^(#{1,6})\s+(.*)$/);
+      const li = line.match(/^\s*[-*]\s+(.*)$/);
+      if (cb) {
+        flushPara();
+        flushList();
+        out.push(`<pre><code>${escHtml(blocks[+cb[1]])}</code></pre>`);
+      } else if (h) {
+        flushPara();
+        flushList();
+        const lvl = h[1].length;
+        out.push(`<h${lvl}>${inline(h[2])}</h${lvl}>`);
+      } else if (li) {
+        flushPara();
+        list.push(li[1]);
+      } else if (!line.trim()) {
+        flushPara();
+        flushList();
+      } else {
+        flushList();
+        para.push(line);
+      }
+    });
+    flushPara();
+    flushList();
+    return out.join('');
+  };
   const relPath = (p) => String(p).split('/').slice(-2).join('/');
   const TOOL_ICONS = { Edit: '✎', MultiEdit: '✎', Write: '✎', Read: '→', Bash: '$', Grep: '⌕', Glob: '⌕' };
 
@@ -1595,110 +1952,30 @@ export function mount() {
     }
     if (isDelta) {
       openTextBuf += text;
-      openTextMsg.innerHTML = escHtml(openTextBuf);
+      openTextMsg.innerHTML = renderMd(openTextBuf);
     } else {
-      openTextMsg.innerHTML = escHtml(text); // authoritative full text
+      openTextMsg.innerHTML = renderMd(text); // authoritative full text
       closeTextRow();
     }
     box.scrollTop = box.scrollHeight;
   };
-  const selectedAnnotations = () => selectedIds.map((id) => Q.get(id)).filter(Boolean);
-  // What the composer Send dispatches: the checked queue subset (0008, default
-  // all) unioned with any @-mentioned comments, deduped and in queue order.
-  const composerDispatch = () => {
-    const ids = new Set(selectedIds);
-    Q.selectedItems().forEach((a) => ids.add(a.id));
-    return Q.all().filter((a) => ids.has(a.id));
-  };
-  // One chip per @-referenced comment, shown inside the composer box.
-  const renderChips = () => {
-    composerChips.innerHTML = '';
-    selectedAnnotations().forEach((a) => {
-      const chip = document.createElement('span');
-      chip.className = 'chip';
-      chip.dataset.id = a.id;
-      chip.title = `${a.loc || 'source unknown'} — ${a.comment}`;
-      chip.innerHTML =
-        `<span class="chip-num">${Q.indexOf(a) + 1}</span>` +
-        `<span class="chip-lbl">${escHtml(a.comment || '(no comment)')}</span>` +
-        `<button class="chip-x" data-act="chip-remove" title="Remove">×</button>`;
-      composerChips.appendChild(chip);
-    });
-  };
-  const updateComposerState = () => {
-    selectedIds = selectedIds.filter((id) => Q.get(id)); // drop references to deleted comments
-    const n = composerDispatch().length;
-    const hasNote = composerText.value.trim().length > 0;
-    composerSend.disabled = agentRunning || !selectedAgent || (n === 0 && !hasNote);
-    selInfo.textContent = n ? `${n} selected` : '';
-    renderChips();
+  // Comments-tab top action bar: checking comments selects them; the bar appears
+  // only once something is selected, and its count drives "Send to agent".
+  const updateCommentsActions = () => {
+    selectedIds = selectedIds.filter((id) => Q.get(id)); // drop deleted comments
+    const n = selectedIds.length;
+    drawerActions.classList.toggle('show', n > 0);
+    if (!n) addNoteBox.classList.remove('open'); // nothing selected → no note input
+    selInfo.textContent = `${n} selected`;
+    commentsSend.disabled = agentRunning || !selectedAgent || n === 0;
   };
 
-  // ---- "@" comment picker --------------------------------------------------
-  // Typing "@" (at start or after whitespace) opens a dropdown of un-referenced
-  // comments; picking one strips the "@query" and adds the comment as a chip.
-  let mentionList = [];
-  let mentionActive = 0;
-  const mentionIsOpen = () => mentionPop.classList.contains('open');
-  const mentionCtx = () => {
-    const caret = composerText.selectionStart;
-    const m = /(?:^|\s)@([^\s@]*)$/.exec(composerText.value.slice(0, caret));
-    return m ? { at: caret - m[1].length - 1, caret, query: m[1].toLowerCase() } : null;
-  };
-  const renderMention = () => {
-    if (!mentionList.length) {
-      mentionPop.innerHTML = '<div class="mention-empty">No comments to reference</div>';
-      return;
-    }
-    mentionPop.innerHTML = mentionList
-      .map((a, i) => {
-        const src = a.loc ? a.loc.split('/').pop() : '';
-        return (
-          `<button class="mitem${i === mentionActive ? ' active' : ''}" data-id="${a.id}">` +
-          `<span class="mitem-num">${Q.indexOf(a) + 1}</span>` +
-          `<span class="mitem-text">${escHtml(a.comment || '(no comment)')}</span>` +
-          (src ? `<span class="mitem-src">${escHtml(src)}</span>` : '') +
-          `</button>`
-        );
-      })
-      .join('');
-  };
-  const openMention = (query) => {
-    const taken = new Set(selectedIds);
-    mentionList = Q.all().filter(
-      (a) =>
-        !taken.has(a.id) &&
-        (!query ||
-          (a.comment || '').toLowerCase().includes(query) ||
-          (a.loc || '').toLowerCase().includes(query)),
-    );
-    mentionActive = 0;
-    renderMention();
-    mentionPop.classList.add('open');
-  };
-  const closeMention = () => {
-    mentionPop.classList.remove('open');
-    mentionList = [];
-  };
-  const pickMention = (a) => {
-    const ctx = mentionCtx();
-    if (ctx) {
-      const v = composerText.value;
-      composerText.value = v.slice(0, ctx.at) + v.slice(ctx.caret);
-      composerText.selectionStart = composerText.selectionEnd = ctx.at;
-    }
-    if (!selectedIds.includes(a.id)) selectedIds.push(a.id);
-    closeMention();
-    updateComposerState();
-    composerText.focus();
-  };
-  // Drop the comments dispatched in the just-finished run (success only).
+  // Drop the comments dispatched in the just-finished panel run (success only).
   const removeSent = () => {
     if (!sentIds.length) return;
     const ids = new Set(sentIds);
     Q.removeMany(ids);
     ids.forEach((id) => locator.forget(id));
-    selectedIds = selectedIds.filter((id) => !ids.has(id));
     sentIds = [];
     refreshCount();
     renderBubbles();
@@ -1780,14 +2057,13 @@ export function mount() {
       cLog('err', '⚠', escHtml(reason));
     }
     stopThinking(agentErrored);
-    sendBtn.disabled = Q.count() === 0 || !selectedAgent;
-    updateComposerState();
+    updateCommentsActions();
   };
 
   // Run a turn: dispatch the chosen comments (+ optional typed note) to the
   // bridge (agent-run.mjs) and stream the reply into one surface. Resumes the
   // prior session when one exists, so the composer reads as a conversation.
-  const runAgent = ({ annotations, note, surface: target }) => {
+  const runAgent = ({ annotations, note }) => {
     if (agentRunning || !selectedAgent) return;
     const anns = annotations || [];
     const text = (note || '').trim();
@@ -1796,12 +2072,11 @@ export function mount() {
     agentRunning = true;
     agentErrored = false;
     closeTextRow(); // fresh run — don't append onto a prior run's last line
-    sendBtn.disabled = true;
-    composerSend.disabled = true;
-    // Stream into exactly one surface — the floating panel OR the drawer.
-    const onPanel = target === 'panel';
-    surface = onPanel ? { log: cpanelLog, status: panelStatus } : { log: stream, status: drawerStatus };
-    if (onPanel) cpanel.classList.add('open'); // drawer sends already have the drawer open
+    commentsSend.disabled = true;
+    // Single-comment / whole-queue sends from the bar + bubbles stream into the
+    // floating panel. (The Comments tab's "Send to agent" routes to Chat instead.)
+    surface = { log: cpanelLog, status: panelStatus };
+    cpanel.classList.add('open');
     agentStartAt = Date.now();
     startThinking();
     sentIds = anns.map((a) => a.id);
@@ -1828,32 +2103,20 @@ export function mount() {
     );
   };
 
-  // Bar "Send all" / ⌥G — whole queue, streams into the floating panel only.
-  const sendAll = () => runAgent({ annotations: Q.all().slice(), note: '', surface: 'panel' });
-  // Drawer composer — checked comments (∪ @-mentions) + note, streams into the
-  // drawer only.
-  const sendFromComposer = () => {
-    const note = composerText.value.trim();
-    const anns = composerDispatch();
-    if (agentRunning || (!anns.length && !note)) return;
-    runAgent({ annotations: anns, note, surface: 'drawer' });
-    composerText.value = '';
-    updateComposerState();
-  };
-
   // ---- Chat tab (0010) -----------------------------------------------------
   // A continuous discuss session, separate from the Comments-tab runs above:
-  // its own session id (chat.sessionId()), its own transcript, and an "Apply
-  // changes" toggle that flips a single turn from discuss → apply-once (D16).
+  // its own session id (chat.sessionId()), its own transcript, and a sticky
+  // posture (chat.mode()) cycled discuss⇄apply with Shift+Tab or the mode line.
   // Reuses the shared run gate (agentRunning) and stream primitives, so a chat
   // turn and a comments run can never interleave on the shared streaming state.
   const chatStateUpdate = () => {
     const hasText = chatText.value.trim().length > 0;
     const hasChips = chat.chips().length > 0;
     chatSend.disabled = agentRunning || !selectedAgent || (!hasText && !hasChips);
-    const on = chat.applyOn();
-    chatApplyBtn.classList.toggle('on', on);
-    chatApplyBtn.setAttribute('aria-pressed', on ? 'true' : 'false');
+    const apply = chat.mode() === 'apply';
+    chatModeHint.classList.toggle('apply', apply);
+    chatModeHint.classList.toggle('discuss', !apply);
+    chatModeHint.querySelector('.mode-name').textContent = apply ? 'apply mode' : 'discuss mode';
   };
   // One chip per element attached to the current chat draft (0011). Numbered to
   // match the element references the turn's markdown cites.
@@ -1864,15 +2127,22 @@ export function mount() {
       chip.className = 'chip';
       chip.dataset.chip = c.id;
       chip.title = `${c.loc || 'source unknown'} — ${c.label}`;
+      // Show the source reference (e.g. App.vue:25:7) — that's what the turn cites
+      // and sends to the agent. Fall back to the element label when unstamped.
+      const ref = c.loc ? c.loc.split('/').pop() : '';
       chip.innerHTML =
-        `<span class="chip-num">${i + 1}</span>` +
-        `<span class="chip-lbl">${escHtml(c.label)}</span>` +
+        (ref
+          ? `<svg class="chip-ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round">` +
+            `<path d="M9 1.75H4.5A1.5 1.5 0 0 0 3 3.25v9.5a1.5 1.5 0 0 0 1.5 1.5h7a1.5 1.5 0 0 0 1.5-1.5V5.75Z"/>` +
+            `<path d="M9 1.75V5.75H13"/></svg>`
+          : `<span class="chip-num">${i + 1}</span>`) +
+        `<span class="chip-lbl">${escHtml(ref || c.label)}</span>` +
         `<button class="chip-x" data-act="chat-chip-remove" title="Remove">×</button>`;
       chatChips.appendChild(chip);
     });
   };
-  // Chat tab is active and the user picked an element: attach it as a read-only
-  // context chip (D13) instead of opening a comment note. Reuses the locator +
+  // Pick-to-attach (from the chat composer's Select button): add the picked
+  // element to the chat draft as a read-only context chip. Reuses the locator +
   // style provenance (0002) — color is the most telling Spark/scoped/shared signal.
   const attachChatChip = (el) => {
     const prov = provenance.inspect(el, 'color');
@@ -1883,7 +2153,6 @@ export function mount() {
       classList: Array.from(el.classList || []),
       provenance: { selector: prov.selector, sourceKind: prov.sourceKind, value: prov.value },
     });
-    if (!drawerOpen) openDrawer(); // surface the landing chip + composer
     renderChatChips();
     chatStateUpdate();
   };
@@ -1927,33 +2196,124 @@ export function mount() {
     closeTextRow();
     if (reason) { agentErrored = true; cLog('err', '⚠', escHtml(reason)); chat.record({ k: 'err', m: reason }); }
     stopThinking(agentErrored);
-    sendBtn.disabled = Q.count() === 0 || !selectedAgent;
+    // A successful comments→chat send resolves those comments: drop them from the
+    // queue, clear the selection + note. A failed run keeps them for a retry.
+    if (pendingResolveIds.length) {
+      if (!agentErrored) {
+        const ids = new Set(pendingResolveIds);
+        Q.removeMany(ids);
+        ids.forEach((id) => locator.forget(id));
+        selectedIds = selectedIds.filter((id) => !ids.has(id));
+        addNoteText.value = '';
+        addNoteBox.classList.remove('open');
+        refreshCount();
+        renderBubbles();
+        closePopover();
+      }
+      pendingResolveIds = [];
+    }
+    renderChatHead(); // a first message gives the thread a fallback title now
+    // Once a turn lands cleanly, name the thread from its context (once) — the
+    // agent-generated title then replaces the first-message fallback.
+    if (!agentErrored && !chat.hasTitle() && chat.entries().some((e) => e.k === 'you')) requestTitle();
     chatStateUpdate();
-    updateComposerState();
+    updateCommentsActions();
+  };
+  // Ask the agent for a short title for the current thread. A self-contained
+  // one-shot (no resume) that feeds the transcript as context, so it never
+  // touches the live session or collides with a follow-up turn. Runs in the
+  // background — failure just leaves the first-message fallback in place.
+  let titleRunning = false;
+  const cleanTitle = (s) => {
+    let t = String(s || '').trim().split('\n')[0].trim();
+    t = t.replace(/^["'`*\s]+|["'`*\s]+$/g, '').replace(/[.,;:!?]+$/, '').replace(/\s+/g, ' ').trim();
+    return t.length > 48 ? t.slice(0, 48) + '…' : t;
+  };
+  const requestTitle = () => {
+    if (titleRunning || !selectedAgent) return;
+    const cid = chat.currentId();
+    const convo = chat
+      .entries()
+      .filter((e) => (e.k === 'you' || e.k === 'text') && e.text)
+      .map((e) => (e.k === 'you' ? 'User: ' : 'Assistant: ') + e.text)
+      .join('\n')
+      .slice(0, 4000);
+    if (!convo) return;
+    titleRunning = true;
+    let buf = '';
+    const finishTitle = () => {
+      if (!titleRunning) return;
+      titleRunning = false;
+      const title = cleanTitle(buf);
+      if (!title) return;
+      chat.setTitle(cid, title);
+      if (chat.currentId() === cid) renderChatHead(); // still the open thread
+      renderChatHistory();
+    };
+    streamAgentRun(
+      {
+        agent: selectedAgent,
+        model: selectedModel,
+        markdown:
+          'Reply with ONLY a short title (3–6 words, no quotes, no trailing punctuation) ' +
+          'that summarizes the conversation below. Output just the title text — nothing else.\n\n' +
+          convo,
+        resume: null,
+        mode: 'discuss',
+      },
+      {
+        onAction: (a) => { if (a.kind === 'text') buf = a.delta ? buf + a.text : a.text; },
+        onBridgeError: () => {},
+        onBridgeEnd: finishTitle,
+        onStreamEnd: finishTitle,
+        onError: () => { titleRunning = false; },
+      },
+      bridgeFetch,
+    );
+  };
+  // Turn the slash-menu picks into prompt text. A leading run of "/name" tokens
+  // (chosen from the "/" menu) is peeled off the typed text: a *skill* becomes an
+  // explicit "Use the X skill." instruction (skills are model-invoked in headless
+  // runs — there's no CLI flag to force one), while a *command*/*prompt* is left
+  // as its literal /name invocation. Unknown tokens are left in the body as-is.
+  const applySkillTokens = (raw) => {
+    const directives = [];
+    let rest = raw;
+    for (;;) {
+      const m = rest.match(/^\/([A-Za-z0-9][\w-]*)(?:\s+|$)/);
+      if (!m) break;
+      const item = availableSkills.find((s) => s.name === m[1]);
+      if (!item) break; // not a known skill/command — leave it in the text
+      directives.push(item.kind === 'skill' ? `Use the "${item.name}" skill.` : `/${item.name}`);
+      rest = rest.slice(m[0].length);
+    }
+    return { directives: directives.join('\n'), body: rest.trim() };
   };
   const runChat = () => {
     const text = chatText.value.trim();
     const chips = chat.chips();
     if (agentRunning || !selectedAgent || (!text && !chips.length)) return;
+    pendingResolveIds = []; // a plain chat turn never resolves queued comments
     agentRunning = true;
     agentErrored = false;
     closeTextRow();
-    sendBtn.disabled = true;
-    composerSend.disabled = true;
+    commentsSend.disabled = true;
     chatSend.disabled = true;
     surface = { log: chatStream, status: chatStatus };
     const empty = chatStream.querySelector('.chat-empty');
     if (empty) chatStream.innerHTML = ''; // first turn — drop the placeholder
     agentStartAt = Date.now();
     startThinking();
-    const mode = chat.takeMode(); // discuss, or apply-once for this one turn (then OFF)
+    const mode = chat.takeMode(); // sticky posture: 'discuss' or 'apply' (Shift+Tab cycles)
 
-    // Fold any attached context chips into the turn: their element references go
-    // into the markdown (0011).
-    let markdown = text;
+    // Peel any leading slash-menu picks off the typed text into agent directives,
+    // then fold attached context chips in: directives → body → chips (0011).
+    const { directives, body } = applySkillTokens(text);
+    let markdown = body;
     if (chips.length) {
-      markdown = (text ? text + '\n\n' : '') + contextChipsBlock(chips);
+      markdown = (body ? body + '\n\n' : '') + contextChipsBlock(chips);
     }
+    if (directives) markdown = directives + (markdown ? '\n\n' + markdown : '');
     chat.clearChips(); // attachments are per-turn — no auto-carry (D13)
     renderChatChips();
     chatStateUpdate(); // reflect the toggle reset + cleared chips
@@ -1961,7 +2321,7 @@ export function mount() {
     if (text) cLog('you', '›', escHtml(text));
     if (text) chat.record({ k: 'you', text });
     if (chips.length) {
-      const labels = chips.map((c) => c.label).join(', ');
+      const labels = chips.map((c) => (c.loc ? c.loc.split('/').pop() : c.label)).join(', ');
       cLog('ctx', '↳', escHtml(labels));
       chat.record({ k: 'ctx', labels });
     }
@@ -1979,6 +2339,49 @@ export function mount() {
       bridgeFetch,
     );
   };
+  // Comments-tab "Send to agent": hand the *selected* comments (+ an optional
+  // note on how to apply them) to the Chat tab and let the agent resolve them
+  // there (apply-once, so it edits the source this turn). Switches to Chat so
+  // the user watches the work stream into one continuous thread, reusing the
+  // chat session + finish/render path. The sent comments are deleted on success.
+  const sendCommentsToChat = () => {
+    const anns = selectedIds.map((id) => Q.get(id)).filter(Boolean);
+    if (agentRunning || !selectedAgent || !anns.length) return;
+    const noteText = addNoteText.value.trim();
+    selectTab('chat');
+    if (!drawerOpen) openDrawer();
+    agentRunning = true;
+    agentErrored = false;
+    closeTextRow();
+    commentsSend.disabled = true;
+    chatSend.disabled = true;
+    surface = { log: chatStream, status: chatStatus };
+    const empty = chatStream.querySelector('.chat-empty');
+    if (empty) chatStream.innerHTML = ''; // first turn — drop the placeholder
+    agentStartAt = Date.now();
+    startThinking();
+    pendingResolveIds = anns.map((a) => a.id); // deleted once the run succeeds
+
+    const parts = ['Please resolve the following comments by editing the source:', toMarkdownFor(anns)];
+    if (noteText) parts.push('## How to apply\n' + noteText);
+    const markdown = parts.join('\n\n');
+    const summary = `${anns.length} comment${anns.length > 1 ? 's' : ''} to resolve` + (noteText ? ` — “${noteText}”` : '');
+    cLog('you', '›', escHtml(summary));
+    chat.record({ k: 'you', text: summary });
+
+    streamAgentRun(
+      { agent: selectedAgent, model: selectedModel, markdown, resume: chat.sessionId(), mode: 'apply-once' },
+      {
+        onAction: renderChatAction,
+        onBridgeError: (m) => { agentErrored = true; cLog('err', '⚠', escHtml(m)); chat.record({ k: 'err', m }); },
+        onBridgeEnd: () => finishChat(null),
+        onStreamEnd: () => finishChat(null),
+        onError: (m) => finishChat(m),
+      },
+      bridgeFetch,
+    );
+  };
+
   // Replay the persisted transcript into the stream (called once on init); an
   // empty thread shows a placeholder instead.
   const restoreChat = () => {
@@ -1994,6 +2397,46 @@ export function mount() {
     es.forEach(renderChatEntry);
     closeTextRow();
     surface = null;
+  };
+
+  // Build the chat-history dropdown from the model's conversation summaries
+  // (most-recent-first). Each row opens that thread; the trash icon deletes it.
+  const renderChatHistory = () => {
+    const list = chat.chats();
+    if (!list.length) {
+      chatHistMenu.innerHTML = '<div class="chat-hist-empty">No chats yet.</div>';
+      return;
+    }
+    chatHistMenu.innerHTML = list
+      .map(
+        (c) =>
+          `<div class="chat-hist-item${c.active ? ' active' : ''}" data-chat="${c.id}">` +
+          `<button class="chat-hist-open" data-act="chat-open" title="${escHtml(c.title)}">${escHtml(c.title)}</button>` +
+          `<button class="chat-hist-del" data-act="chat-del" title="Delete chat" aria-label="Delete chat">` +
+          `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>` +
+          `</button></div>`,
+      )
+      .join('');
+  };
+  // Reflect the current conversation's title into the chat header. Muted while
+  // it's still the "New chat" placeholder.
+  const renderChatHead = () => {
+    const t = chat.title();
+    chatTitle.textContent = t;
+    chatTitle.title = t;
+    chatTitle.classList.toggle('untitled', t === 'New chat');
+  };
+  // Switch the open conversation: drop the half-composed draft (chips/input are
+  // per-turn, not per-chat), replay the target thread, and refresh the chrome.
+  const switchChat = () => {
+    if (agentRunning) return; // never swap threads mid-stream
+    chat.clearChips();
+    renderChatChips();
+    chatText.value = '';
+    restoreChat();
+    renderChatHead();
+    chatStateUpdate();
+    renderChatHistory();
   };
 
   const exportMarkdown = () => {
@@ -2015,15 +2458,21 @@ export function mount() {
   };
 
   // ---- Pick mode + marquee -------------------------------------------------
-  const setPicking = (on) => {
+  const setPicking = (on, mode = 'comment') => {
     picking = on;
-    pickBtn.classList.toggle('on', on);
+    pickMode = on ? mode : 'comment';
+    pickBtn.classList.toggle('on', on && pickMode === 'comment');
+    chatPickBtn.classList.toggle('armed', on && pickMode === 'chat'); // accent the attach button while arming a pick
+    chatPickBtn.setAttribute('aria-pressed', on && pickMode === 'chat' ? 'true' : 'false');
     if (!on) {
       hideOutline();
       marquee.style.display = 'none';
       closeNote();
     }
   };
+  // Toggle a pick mode: clicking the active mode's button turns picking off;
+  // clicking the other switches modes (and keeps picking on).
+  const togglePick = (mode) => setPicking(!(picking && pickMode === mode), mode);
 
   const hideOutline = () => {
     outline.style.display = 'none';
@@ -2063,6 +2512,10 @@ export function mount() {
         closePopover();
       }
     }
+    // Click-away closes an open note (discarding it) — unless the press lands on
+    // the note itself. A fresh pick opens its note on the later click event, so
+    // this never eats the gesture that's opening one.
+    if (note.style.display === 'block' && !e.composedPath().includes(note)) closeNote();
     if (!picking || isOwn(e.composedPath()[0])) return;
     dragStart = { x: e.clientX, y: e.clientY };
     dragging = false;
@@ -2100,10 +2553,13 @@ export function mount() {
       const r = marqueeRect(dragStart, { x: e.clientX, y: e.clientY });
       marquee.style.display = 'none';
       justDragged = true;
-      const region = {
-        x: r.left + window.scrollX, y: r.top + window.scrollY, w: r.width, h: r.height,
-      };
-      openNote({ region }, { bottom: r.top + r.height, left: r.left }, null);
+      // Region marquee only makes a comment; chat-pick attaches single elements.
+      if (pickMode === 'comment') {
+        const region = {
+          x: r.left + window.scrollX, y: r.top + window.scrollY, w: r.width, h: r.height,
+        };
+        openNote({ region }, { bottom: r.top + r.height, left: r.left }, null);
+      }
     }
     dragStart = null;
     dragging = false;
@@ -2122,10 +2578,10 @@ export function mount() {
     e.preventDefault();
     e.stopPropagation();
     const el = locator.stampedAncestor(target);
-    // Pick is tab-aware (D13): with the Chat tab active a pick attaches the
-    // element to the chat draft as a context chip; otherwise it creates a comment.
-    if (activeTab === 'chat') {
+    if (pickMode === 'chat') {
       attachChatChip(el);
+      setPicking(false); // single-shot: one pick attaches, then dismiss selection
+      chatText.focus(); // land the cursor in the composer so you can type right away
       return;
     }
     openNote({ el }, el.getBoundingClientRect(), null);
@@ -2133,48 +2589,59 @@ export function mount() {
 
 
   // ---- Comments drawer -----------------------------------------------------
+  // One card per comment: author + relative time, a select checkbox on the
+  // right, the comment body, any threaded replies, and a Reply affordance that
+  // reveals an inline reply box. Checking a comment selects it for "Send to
+  // agent"; the action bar appears once anything is selected.
   const renderDrawer = () => {
     drawerCount.textContent = Q.count() ? String(Q.count()) : '';
+    drawerBubbleBadge.textContent = String(Q.count());
+    drawerBubbleBadge.classList.toggle('show', Q.count() > 0);
     if (!Q.count()) {
       drawerList.innerHTML =
         '<div class="drawer-empty">No comments yet.<br>Use Pick to annotate an element or region.</div>';
-      updateComposerState();
+      updateCommentsActions();
       return;
     }
     drawerList.innerHTML = '';
-    Q.all().forEach((a, i) => {
+    Q.all().forEach((a) => {
       const row = document.createElement('div');
       row.className = 'crow';
       row.dataset.id = a.id;
+      const hasLoc = !!a.loc;
+      const on = selectedIds.includes(a.id);
+      if (on) row.classList.add('selected');
       row.innerHTML =
-        `<div class="crow-top">` +
-        `<div class="crow-idgrp">` +
-        `<input type="checkbox" class="crow-check" data-act="drow-select"${Q.isSelected(a.id) ? ' checked' : ''} title="Include when sending" />` +
-        `<span class="crow-num">${i + 1}</span>` +
+        `<div class="crow-head">` +
+        `<button class="crow-resolve" data-act="crow-select" aria-pressed="${on ? 'true' : 'false'}" title="Select to send">` +
+        `<span class="crow-resolve-box${on ? ' on' : ''}"></span>` +
+        `</button>` +
+        `<div class="crow-meta">` +
+        (hasLoc
+          ? `<div class="src"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg><span class="src-name"></span></div>` +
+            `<span class="crow-divider"></span>`
+          : '') +
+        `<span class="crow-time"></span>` +
         `</div>` +
-        `<div class="src"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg><span class="src-name"></span></div>` +
         `<div class="crow-tools">` +
-        `<button class="crow-act" data-act="drow-edit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg><span>Edit</span></button>` +
-        `<button class="crow-act danger" data-act="drow-delete"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M10 11v6M14 11v6"/></svg><span>Dismiss</span></button>` +
+        `<button class="crow-act" data-act="crow-edit" title="Edit comment" aria-label="Edit comment"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></button>` +
+        `<button class="crow-act danger" data-act="crow-delete" title="Delete comment" aria-label="Delete comment"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>` +
         `</div>` +
         `</div>` +
-        `<div class="crow-detail">` +
-        `<div class="comment"><div class="comment-title">Comment</div><blockquote class="crow-body"></blockquote></div>` +
-        `</div>`;
-      fillSrc(row.querySelector('.src'), a.loc);
+        `<blockquote class="crow-body"></blockquote>`;
+      row.querySelector('.crow-time').textContent = relTime(a.createdAt);
+      if (hasLoc) fillSrc(row.querySelector('.src'), a.loc);
       row.querySelector('.crow-body').textContent = a.comment;
       drawerList.appendChild(row);
     });
-    updateComposerState();
+    updateCommentsActions();
   };
 
-  // Reflect the active tab onto the drawer (CSS shows/hides each pane) and the
-  // tab buttons. Persisted so it survives a reload.
+  // Reflect the active view onto the drawer (CSS shows/hides each pane and
+  // swaps the header between brand+bubble and back+heading). Persisted so it
+  // survives a reload.
   const applyTab = () => {
     drawer.classList.toggle('tab-chat', activeTab === 'chat');
-    drawerTabs.querySelectorAll('.dtab').forEach((b) => {
-      b.classList.toggle('active', b.dataset.tab === activeTab);
-    });
   };
   const selectTab = (tab) => {
     if (tab !== 'comments' && tab !== 'chat') return;
@@ -2183,17 +2650,29 @@ export function mount() {
     applyTab();
   };
 
+  // Non-modal: instead of overlaying the page, shrink it. A right margin on the
+  // host's <html> shifts normal-flow content left by the panel's width while the
+  // fixed panel fills the gap (docked-devtools effect). Margin must go on the
+  // root, not <body>, so it also reflows the page's own fixed/absolute layout.
+  const pushPage = (open) => {
+    const root = document.documentElement;
+    root.style.transition = 'margin-right .22s cubic-bezier(.4,0,.2,1)';
+    root.style.marginRight = open ? `${drawer.offsetWidth}px` : '';
+  };
+
   const openDrawer = () => {
     drawerOpen = true;
     renderDrawer();
     applyTab();
-    scrim.classList.add('open');
     drawer.classList.add('open');
+    commentsBtn.classList.add('on');
+    pushPage(true);
   };
   const closeDrawer = () => {
     drawerOpen = false;
-    scrim.classList.remove('open');
     drawer.classList.remove('open');
+    commentsBtn.classList.remove('on');
+    pushPage(false);
   };
 
   const clearAll = () => {
@@ -2204,15 +2683,27 @@ export function mount() {
     closePopover();
   };
 
+  const closeGearMenu = () => gearMenu.classList.remove('open');
+  // Open the gear menu, deciding which way its model flyout should fly: right by
+  // default, left only when the bar sits too near the viewport's right edge to
+  // fit the submenu (it's draggable, so this is measured each open).
+  const gearSub = gearMenu.querySelector('.gear-sub');
+  const FLYOUT_W = 200; // submenu min-width + gap + a little slack
+  const openGearMenu = () => {
+    const room = window.innerWidth - gearMenu.getBoundingClientRect().right;
+    gearSub.classList.toggle('flip-left', room < FLYOUT_W);
+    gearMenu.classList.add('open');
+  };
+
   // ---- Wiring --------------------------------------------------------------
   bar.addEventListener('click', (e) => {
     const btn = e.target.closest('[data-act]');
     if (!btn) return;
     const act = btn.dataset.act;
-    if (act === 'pick') setPicking(!picking);
-    else if (act === 'comments') openDrawer();
-    else if (act === 'send') sendAll();
-    else if (act === 'clear') clearAll();
+    if (act === 'pick') togglePick('comment');
+    else if (act === 'comments') drawerOpen ? closeDrawer() : openDrawer();
+    else if (act === 'gear-toggle') gearMenu.classList.contains('open') ? closeGearMenu() : openGearMenu();
+    else if (act === 'clear') { clearAll(); closeGearMenu(); }
     else if (act === 'collapse') collapseBar();
   });
 
@@ -2311,32 +2802,130 @@ export function mount() {
     });
   };
 
-  composerText.addEventListener('input', () => {
-    const ctx = mentionCtx();
-    if (ctx) openMention(ctx.query);
-    else closeMention();
-    updateComposerState();
+  // ---- Add-note (top action bar) -------------------------------------------
+  // "Add note" reveals an instruction box; its text rides along with the
+  // selected comments on "Send to agent" (guidance on how to apply them). The
+  // typed value is preserved while toggling, and cleared after a successful send.
+  const toggleAddNote = () => {
+    const open = !addNoteBox.classList.contains('open');
+    addNoteBox.classList.toggle('open', open);
+    if (open) addNoteText.focus();
+  };
+  addNoteText.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') { e.preventDefault(); addNoteBox.classList.remove('open'); }
+    else if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); sendCommentsToChat(); }
   });
-  composerText.addEventListener('keydown', (e) => {
-    if (mentionIsOpen()) {
-      if (e.key === 'Escape') { e.preventDefault(); closeMention(); return; }
-      if (mentionList.length) {
-        if (e.key === 'ArrowDown') { e.preventDefault(); mentionActive = (mentionActive + 1) % mentionList.length; renderMention(); return; }
-        if (e.key === 'ArrowUp') { e.preventDefault(); mentionActive = (mentionActive - 1 + mentionList.length) % mentionList.length; renderMention(); return; }
-        if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); pickMention(mentionList[mentionActive]); return; }
+
+  // ---- "/" slash-menu — pick a project skill/command into the composer -------
+  // Opens when the caret sits in a leading "/token" (the first run of slash
+  // tokens), filters as you type, and inserts "/name " on pick. The pick is just
+  // composer text; runChat() (via applySkillTokens) is what turns it into agent
+  // directives. Keyboard: ↑/↓ move, Enter/Tab pick, Esc closes.
+  let skillMenuOpen = false;
+  let skillActive = 0; // highlighted row into skillShown
+  let skillShown = []; // currently filtered items
+  let skillTokenStart = 0; // index of the '/' being completed, in the textarea
+
+  // The slash-token under the caret, if the caret is within the leading run of
+  // "/token" tokens. Returns { query, start } or null.
+  const slashContext = () => {
+    const caret = chatText.selectionStart == null ? chatText.value.length : chatText.selectionStart;
+    const head = chatText.value.slice(0, caret);
+    const m = head.match(/^((?:\/[A-Za-z0-9][\w-]*\s+)*)\/([A-Za-z0-9][\w-]*)?$/);
+    return m ? { query: m[2] || '', start: m[1].length } : null;
+  };
+  const filterSkills = (q) => {
+    const ql = q.toLowerCase();
+    return availableSkills
+      .filter((s) => s.name.toLowerCase().includes(ql))
+      .sort((a, b) => Number(b.name.toLowerCase().startsWith(ql)) - Number(a.name.toLowerCase().startsWith(ql)));
+  };
+  // Bold the matched span in a name.
+  const markName = (name, q) => {
+    const i = q ? name.toLowerCase().indexOf(q.toLowerCase()) : -1;
+    if (i < 0) return escHtml(name);
+    return escHtml(name.slice(0, i)) + '<b>' + escHtml(name.slice(i, i + q.length)) + '</b>' + escHtml(name.slice(i + q.length));
+  };
+  const closeSkillMenu = () => {
+    if (!skillMenuOpen) return;
+    skillMenuOpen = false;
+    skillActive = 0;
+    chatSkillMenu.classList.remove('open');
+  };
+  const refreshSkillActive = () => {
+    const opts = chatSkillMenu.querySelectorAll('.skill-opt');
+    opts.forEach((o, i) => o.classList.toggle('active', i === skillActive));
+    if (opts[skillActive]) opts[skillActive].scrollIntoView({ block: 'nearest' });
+  };
+  const updateSkillMenu = () => {
+    const ctx = slashContext();
+    if (!ctx) return closeSkillMenu();
+    skillTokenStart = ctx.start;
+    skillShown = filterSkills(ctx.query);
+    if (skillActive >= skillShown.length) skillActive = 0;
+    if (!availableSkills.length) {
+      chatSkillMenu.innerHTML = '<div class="skill-menu-empty">No project skills found</div>';
+    } else if (!skillShown.length) {
+      chatSkillMenu.innerHTML = '<div class="skill-menu-empty">No match</div>';
+    } else {
+      chatSkillMenu.innerHTML = skillShown
+        .map(
+          (s, i) =>
+            `<button type="button" class="skill-opt${i === skillActive ? ' active' : ''}" role="option" data-name="${escHtml(s.name)}">` +
+            `<span class="skill-opt-top"><span class="skill-opt-name">/${markName(s.name, ctx.query)}</span>` +
+            `<span class="skill-opt-kind">${escHtml(s.kind)}</span></span>` +
+            (s.description ? `<span class="skill-opt-desc">${escHtml(s.description)}</span>` : '') +
+            '</button>',
+        )
+        .join('');
+    }
+    skillMenuOpen = true;
+    chatSkillMenu.classList.add('open');
+  };
+  const pickSkill = (item) => {
+    if (!item) return;
+    const caret = chatText.selectionStart == null ? chatText.value.length : chatText.selectionStart;
+    const v = chatText.value;
+    const insert = '/' + item.name + ' ';
+    chatText.value = v.slice(0, skillTokenStart) + insert + v.slice(caret);
+    const pos = skillTokenStart + insert.length;
+    chatText.setSelectionRange(pos, pos);
+    closeSkillMenu();
+    chatText.focus();
+    chatStateUpdate();
+  };
+  // Pick on mousedown (not click) with preventDefault so the textarea keeps focus
+  // and no blur fires mid-selection.
+  chatSkillMenu.addEventListener('mousedown', (e) => {
+    const opt = e.target.closest('.skill-opt');
+    if (!opt) return;
+    e.preventDefault();
+    pickSkill(skillShown.find((s) => s.name === opt.dataset.name));
+  });
+  chatText.addEventListener('blur', closeSkillMenu);
+
+  chatText.addEventListener('input', () => {
+    chatStateUpdate();
+    updateSkillMenu();
+  });
+  chatText.addEventListener('keydown', (e) => {
+    // While the slash-menu is open, it owns navigation/selection keys.
+    if (skillMenuOpen) {
+      if (e.key === 'Escape') { e.preventDefault(); closeSkillMenu(); return; }
+      if (skillShown.length) {
+        if (e.key === 'ArrowDown') { e.preventDefault(); skillActive = (skillActive + 1) % skillShown.length; refreshSkillActive(); return; }
+        if (e.key === 'ArrowUp') { e.preventDefault(); skillActive = (skillActive - 1 + skillShown.length) % skillShown.length; refreshSkillActive(); return; }
+        if (e.key === 'Enter' || (e.key === 'Tab' && !e.shiftKey)) { e.preventDefault(); pickSkill(skillShown[skillActive]); return; }
       }
     }
     if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
       e.preventDefault();
-      sendFromComposer();
-    }
-  });
-
-  chatText.addEventListener('input', chatStateUpdate);
-  chatText.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
-      e.preventDefault();
       runChat();
+    } else if (e.key === 'Tab' && e.shiftKey) {
+      // Claude-Code-style: cycle the sticky agent posture without leaving the input.
+      e.preventDefault();
+      chat.cycleMode();
+      chatStateUpdate();
     }
   });
 
@@ -2344,41 +2933,71 @@ export function mount() {
     if (e.target.closest('[data-act="agent-close"]')) cpanel.classList.remove('open');
   });
 
-  scrim.addEventListener('click', closeDrawer);
   drawer.addEventListener('click', (e) => {
     if (e.target.closest('[data-act="drawer-close"]')) {
       closeDrawer();
       return;
     }
-    if (e.target.closest('[data-act="composer-send"]')) {
-      sendFromComposer();
+    if (e.target.closest('[data-act="comments-send"]')) {
+      sendCommentsToChat(); // hand the selected comments to the Chat tab to resolve
+      return;
+    }
+    if (e.target.closest('[data-act="add-note"]')) {
+      toggleAddNote();
       return;
     }
     if (e.target.closest('[data-act="chat-send"]')) {
       runChat();
       return;
     }
-    if (e.target.closest('[data-act="chat-apply"]')) {
-      chat.setApply(!chat.applyOn()); // toggle "Apply changes" for the next turn
+    if (e.target.closest('[data-act="chat-new"]')) {
+      if (agentRunning) return; // can't start a thread while one is streaming
+      chat.newChat();
+      closeChatHistory();
+      switchChat();
+      chatText.focus();
+      return;
+    }
+    if (e.target.closest('[data-act="chat-history-toggle"]')) {
+      const open = !chatHistMenu.classList.contains('open');
+      if (open) renderChatHistory();
+      chatHistMenu.classList.toggle('open', open);
+      chatHistBtn.classList.toggle('open', open);
+      chatHistBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+      return;
+    }
+    const histDel = e.target.closest('[data-act="chat-del"]');
+    if (histDel) {
+      const id = histDel.closest('.chat-hist-item').dataset.chat;
+      const wasCurrent = id === chat.currentId();
+      chat.deleteChat(id);
+      if (wasCurrent) switchChat(); // open thread was removed — replay the fallback
+      else renderChatHistory();
+      return;
+    }
+    const histOpen = e.target.closest('[data-act="chat-open"]');
+    if (histOpen) {
+      if (agentRunning) return;
+      chat.selectChat(histOpen.closest('.chat-hist-item').dataset.chat);
+      closeChatHistory();
+      switchChat();
+      return;
+    }
+    if (e.target.closest('[data-act="chat-mode"]')) {
+      chat.cycleMode(); // discuss ⇄ apply (also reachable via Shift+Tab in the composer)
       chatStateUpdate();
       return;
     }
-    const tab = e.target.closest('[data-act="tab"]');
-    if (tab) {
-      selectTab(tab.dataset.tab);
+    if (e.target.closest('[data-act="chat-pick"]')) {
+      togglePick('chat'); // arm element-pick that attaches a context chip
       return;
     }
-    if (e.target.closest('[data-act="toggle-list"]')) {
-      listCollapsed = !listCollapsed;
-      drawerList.classList.toggle('collapsed', listCollapsed);
-      drawerTabs.classList.toggle('collapsed', listCollapsed);
-      drawerHead.classList.toggle('collapsed', listCollapsed);
+    if (e.target.closest('[data-act="open-comments"]')) {
+      selectTab('comments'); // header bubble → Comments sub-view
       return;
     }
-    const mitem = e.target.closest('.mitem');
-    if (mitem) {
-      const a = Q.get(mitem.dataset.id);
-      if (a) pickMention(a);
+    if (e.target.closest('[data-act="comments-back"]')) {
+      selectTab('chat'); // back arrow → Chat home
       return;
     }
     const chatChipX = e.target.closest('[data-act="chat-chip-remove"]');
@@ -2388,35 +3007,37 @@ export function mount() {
       chatStateUpdate();
       return; // drop one context attachment before sending
     }
-    const chipX = e.target.closest('[data-act="chip-remove"]');
-    if (chipX) {
-      const id = chipX.closest('.chip').dataset.id;
-      selectedIds = selectedIds.filter((x) => x !== id);
-      updateComposerState();
-      return; // removing a chip just drops that reference
-    }
     const row = e.target.closest('.crow');
     if (!row) return;
     const id = row.dataset.id;
-    const check = e.target.closest('[data-act="drow-select"]');
-    if (check) {
-      Q.setSelected(id, check.checked); // include/exclude this item from Send
-      updateComposerState();
-      return; // don't toggle the card's expanded detail
+    // Select — check/uncheck this comment for "Send to agent" (in place, so the
+    // card's reply state survives). Selection drives the top action bar.
+    if (e.target.closest('[data-act="crow-select"]')) {
+      const i = selectedIds.indexOf(id);
+      if (i >= 0) selectedIds.splice(i, 1);
+      else selectedIds.push(id);
+      const on = selectedIds.includes(id);
+      const btn = row.querySelector('[data-act="crow-select"]');
+      btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+      btn.querySelector('.crow-resolve-box').classList.toggle('on', on);
+      row.classList.toggle('selected', on);
+      updateCommentsActions();
+      return;
+    }
+    if (e.target.closest('[data-act="crow-edit"]')) {
+      editAnnotation(id);
+      return;
+    }
+    if (e.target.closest('[data-act="crow-delete"]')) {
+      const i = selectedIds.indexOf(id);
+      if (i >= 0) selectedIds.splice(i, 1);
+      deleteAnnotation(id);
+      renderDrawer();
+      return;
     }
     const loc = e.target.closest('.src');
     if (loc && loc.classList.contains('linkable')) {
       openInEditor(loc.dataset.loc);
-      return;
-    }
-    const btn = e.target.closest('button[data-act]');
-    if (btn) {
-      if (btn.dataset.act === 'drow-edit') {
-        closeDrawer();
-        editAnnotation(id);
-      } else if (btn.dataset.act === 'drow-delete') {
-        deleteAnnotation(id);
-      }
       return;
     }
   });
@@ -2477,7 +3098,8 @@ export function mount() {
   document.addEventListener('mouseup', onMouseUp, true);
   document.addEventListener('click', onClick, true);
   const isTyping = () => {
-    if (shadow.activeElement === noteText || shadow.activeElement === composerText) return true;
+    const sa = shadow.activeElement;
+    if (sa && (sa.tagName === 'TEXTAREA' || sa.tagName === 'INPUT')) return true;
     const el = document.activeElement;
     if (!el) return false;
     return (
@@ -2491,6 +3113,8 @@ export function mount() {
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
       if (pickers.some((p) => p.menu.classList.contains('open'))) { closeAgentMenu(); return; }
+      if (gearMenu.classList.contains('open')) { closeGearMenu(); return; }
+      if (chatHistMenu.classList.contains('open')) { closeChatHistory(); return; }
       if (cpanel.classList.contains('open')) cpanel.classList.remove('open');
       else if (drawerOpen) closeDrawer();
       else if (note.style.display === 'block') closeNote();
@@ -2505,13 +3129,10 @@ export function mount() {
     if (!e.altKey || e.metaKey || e.ctrlKey || isTyping()) return;
     if (e.code === 'KeyS') {
       e.preventDefault();
-      setPicking(!picking);
+      togglePick('comment');
     } else if (e.code === 'KeyE') {
       e.preventDefault();
       exportMarkdown();
-    } else if (e.code === 'KeyG') {
-      e.preventDefault();
-      sendAll();
     } else if (e.code === 'KeyC') {
       e.preventDefault();
       if (drawerOpen) closeDrawer();
@@ -2525,7 +3146,9 @@ export function mount() {
   refreshCount();
   renderBubbles();
   restoreChat(); // replay the persisted chat transcript (resumes via chat.sessionId())
+  renderChatHead();
   chatStateUpdate();
+  renderChatHistory();
 
   // ---- Agent + model picker ------------------------------------------------
   // Probe the bridge for installed coding-agent CLIs and their models, then build
@@ -2536,12 +3159,17 @@ export function mount() {
   const modelsOf = (ag) => (ag.models && ag.models.length ? ag.models : [{ label: 'Default', value: '' }]);
   const AGENT_CHECK =
     '<svg class="agent-opt-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>';
-  // Three instances — the bar, the drawer composer, and the chat composer —
-  // share one selection; all reflect and drive the same selectedAgent/model.
-  const pickers = ['.bar .agent-pick', '.drawer-composer .agent-pick', '.chat-composer .agent-pick'].map((sel) => {
+  // The chat composer hosts the inline combobox (shown only when there's more
+  // than one model to pick); the "Default model" control lives in the gear menu
+  // as a flyout submenu (built separately below). Both share one selection and
+  // drive the same selectedAgent/model.
+  const pickers = [
+    { sel: '.chat-composer .agent-pick', alwaysShow: false },
+  ].map(({ sel, alwaysShow }) => {
     const wrap = $(sel);
     return {
       wrap,
+      alwaysShow,
       trigger: wrap.querySelector('.agent-trigger'),
       label: wrap.querySelector('.agent-trigger-label'),
       menu: wrap.querySelector('.agent-menu'),
@@ -2565,6 +3193,50 @@ export function mount() {
       .join('');
   const renderAllMenus = () => { const html = menuHtml(); pickers.forEach((p) => { p.menu.innerHTML = html; }); };
   const closeAgentMenu = () => pickers.forEach((p) => { p.menu.classList.remove('open'); p.trigger.classList.remove('open'); });
+
+  // The gear menu's "Default model" flyout: every model, listed flat and
+  // grouped per agent by a horizontal divider label (no nested submenus).
+  // Selection routes through select(), so it stays in lockstep with the chat
+  // composer's combobox.
+  const gearModelMenu = $('.bar .gear-model-menu');
+  const gearModelVal = $('.bar .gear-model-val');
+  const gearModelHtml = () =>
+    availableAgents
+      .map((ag) => {
+        const opts = modelsOf(ag)
+          .map((m) => {
+            const sel = ag.name === selectedAgent && m.value === selectedModel;
+            return (
+              `<button class="gear-opt${sel ? ' sel' : ''}" data-value="${ag.name}:${m.value}" data-label="${escHtml(m.label)}">` +
+              AGENT_CHECK.replace('agent-opt-check', 'gear-opt-check') +
+              `<span class="gear-opt-label">${escHtml(m.label)}</span></button>`
+            );
+          })
+          .join('');
+        return `<div class="gear-group-label">${escHtml(ag.name)}</div>${opts}`;
+      })
+      .join('');
+  const renderGearModels = (label) => { gearModelMenu.innerHTML = gearModelHtml(); gearModelVal.textContent = label; };
+
+  // Skills/commands the chosen agent exposes at the project root — fed to the "/"
+  // slash-menu. Fetched per agent (claude/codex scan different locations), cached
+  // client-side so switching back is instant.
+  const applySkills = (list) => {
+    availableSkills = Array.isArray(list) ? list : [];
+    if (skillMenuOpen) updateSkillMenu(); // refresh an open menu once results land
+  };
+  const loadSkills = (agent) => {
+    if (!agent) return applySkills([]);
+    if (skillsByAgent[agent]) return applySkills(skillsByAgent[agent]);
+    bridgeFetch('/__pointcut/skills?agent=' + encodeURIComponent(agent))
+      .then((r) => (r.ok ? r.json() : { skills: [] }))
+      .then((d) => {
+        skillsByAgent[agent] = (d && d.skills) || [];
+        applySkills(skillsByAgent[agent]);
+      })
+      .catch(() => applySkills([]));
+  };
+
   const select = (agent, model, label) => {
     selectedAgent = agent;
     selectedModel = model;
@@ -2572,8 +3244,10 @@ export function mount() {
     agentSessionId = null; // a resume id is per-agent/model — don't carry it across a switch
     chat.setSession(null); // ditto for the chat thread — its resume id is stale under a new agent
     renderAllMenus();
+    renderGearModels(label);
     refreshCount();
-    updateComposerState();
+    updateCommentsActions();
+    loadSkills(agent); // the "/" menu follows the agent
     chatStateUpdate();
   };
   const applyAgents = (agents) => {
@@ -2583,11 +3257,12 @@ export function mount() {
     selectedModel = first ? modelsOf(first)[0].value : '';
     const label = first ? modelsOf(first)[0].label : 'No agent';
     const total = availableAgents.reduce((n, ag) => n + modelsOf(ag).length, 0);
-    pickers.forEach((p) => { p.label.textContent = label; p.wrap.classList.toggle('show', total > 1); });
-    if (!availableAgents.length) sendBtn.dataset.tip = 'No coding-agent CLI found on PATH';
+    pickers.forEach((p) => { p.label.textContent = label; p.wrap.classList.toggle('show', p.alwaysShow || total > 1); });
     renderAllMenus();
+    renderGearModels(label);
     refreshCount();
-    updateComposerState();
+    updateCommentsActions();
+    loadSkills(selectedAgent); // prime the "/" menu for the default agent
     chatStateUpdate();
   };
   pickers.forEach((p) => {
@@ -2607,10 +3282,24 @@ export function mount() {
       }
     });
   });
+  // Picking a model from the gear flyout commits the selection and closes the
+  // whole gear menu (which collapses the flyout with it).
+  gearMenu.addEventListener('click', (e) => {
+    const opt = e.target.closest('.gear-opt');
+    if (!opt) return;
+    const v = opt.dataset.value;
+    const i = v.indexOf(':');
+    select(v.slice(0, i), v.slice(i + 1), opt.dataset.label);
+    closeGearMenu();
+  });
   // Dismiss on any press outside both comboboxes (composedPath crosses the shadow).
   document.addEventListener('mousedown', (e) => {
     const open = pickers.some((p) => p.menu.classList.contains('open'));
     if (open && !pickers.some((p) => e.composedPath().includes(p.wrap))) closeAgentMenu();
+    // The gear menu hosts one of those comboboxes, so close it only once the
+    // press lands outside the whole gear control (and not on its open submenu).
+    if (gearMenu.classList.contains('open') && !e.composedPath().includes(gearWrap)) closeGearMenu();
+    if (chatHistMenu.classList.contains('open') && !e.composedPath().includes(chatHistWrap)) closeChatHistory();
   }, true);
   bridgeFetch('/__pointcut/agents')
     .then((r) => (r.ok ? r.json() : { agents: [] }))

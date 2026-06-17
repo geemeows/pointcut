@@ -1,10 +1,11 @@
 // @pointcut/core — the Bridge, assembled.
 //
 // The dev-server runtime surface that turns toolbar intent into agent edits
-// (CONTEXT.md). It is exactly one connect-style handler composed of the three
+// (CONTEXT.md). It is exactly one connect-style handler composed of the four
 // endpoints under the neutral `/__pointcut/*` prefix: editor-launch (jump to
-// source), agent-probe (which agents are installed), and the agent run (spawn
-// the chosen agent CLI, stream a uniform NDJSON Action stream).
+// source), agent-probe (which agents are installed), skills-probe (which skills
+// the project exposes to the "/" menu), and the agent run (spawn the chosen
+// agent CLI, stream a uniform NDJSON Action stream).
 //
 // The design-mode hard guard lives here so every consumer inherits it: when
 // `enabled` is false the Bridge is a no-op passthrough — it can never run in
@@ -12,6 +13,7 @@
 // short-circuits at the top so a disabled Bridge does no work at all.
 import { createEditorLaunch } from './editor-launch.mjs';
 import { createAgentProbe } from './agent-probe.mjs';
+import { createSkillsProbe } from './skills-probe.mjs';
 import { createAgentRun } from './agent-run.mjs';
 
 /**
@@ -31,9 +33,12 @@ export function createBridge({ enabled = false, cwd = process.cwd(), agents } = 
   // call to next() is the consumer's. Order is irrelevant (disjoint prefixes).
   const editorLaunch = createEditorLaunch({ enabled, cwd });
   const agentProbe = createAgentProbe({ enabled, agents });
+  const skillsProbe = createSkillsProbe({ enabled, cwd });
   const agentRun = createAgentRun({ enabled, cwd, agents });
 
   return (req, res, next) => {
-    editorLaunch(req, res, () => agentProbe(req, res, () => agentRun(req, res, next)));
+    editorLaunch(req, res, () =>
+      agentProbe(req, res, () => skillsProbe(req, res, () => agentRun(req, res, next))),
+    );
   };
 }

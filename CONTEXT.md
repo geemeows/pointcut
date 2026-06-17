@@ -13,7 +13,7 @@ The compile-time transform that writes `data-pointcut-loc="file:line:col"` onto 
 _Avoid_: loc attribute, stamper, data-luciq-loc (luciq-coupled, do not use)
 
 **Bridge**:
-The dev-server runtime surface that turns toolbar intent into agent edits. Three endpoints under a neutral `/__pointcut/*` prefix: editor-launch, agent-probe, and the agent run (spawns the chosen agent CLI, normalizes its native events into a uniform NDJSON Action stream). Its guts live framework-free in `@pointcut/core` as `createBridge()`; consumers only mount the handler.
+The dev-server runtime surface that turns toolbar intent into agent edits. Four endpoints under a neutral `/__pointcut/*` prefix: editor-launch, agent-probe, skills-probe (which skills/commands the installing project exposes to the toolbar's `/` menu, scanned per agent at the project root), and the agent run (spawns the chosen agent CLI, normalizes its native events into a uniform NDJSON Action stream). Its guts live framework-free in `@pointcut/core` as `createBridge()`; consumers only mount the handler.
 _Avoid_: server, middleware, proxy, /__luciq_* (luciq-coupled)
 
 **Driver**:

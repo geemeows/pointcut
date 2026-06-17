@@ -15,21 +15,22 @@ const fakeStorage = (seed) => {
 
 const KEY = 'luciq-design-chat';
 
-test('fresh chat: empty transcript, no session, apply OFF → discuss', () => {
+test('fresh chat: empty transcript, no session, mode defaults to discuss', () => {
   const chat = createChat({ storage: fakeStorage(), storageKey: KEY });
   assert.deepEqual(chat.entries(), []);
   assert.equal(chat.sessionId(), null);
-  assert.equal(chat.applyOn(), false);
+  assert.equal(chat.mode(), 'discuss');
   assert.equal(chat.takeMode(), 'discuss');
 });
 
-test('Apply ON makes one turn apply-once, then resets to OFF (D16)', () => {
+test('cycleMode flips discuss⇄apply and stays sticky across sends', () => {
   const chat = createChat({ storage: fakeStorage(), storageKey: KEY });
-  chat.setApply(true);
-  assert.equal(chat.applyOn(), true);
-  assert.equal(chat.takeMode(), 'apply-once'); // consumes the toggle
-  assert.equal(chat.applyOn(), false); // returns to OFF after the turn
-  assert.equal(chat.takeMode(), 'discuss'); // next turn is back to discuss
+  assert.equal(chat.cycleMode(), 'apply'); // discuss → apply
+  assert.equal(chat.mode(), 'apply');
+  assert.equal(chat.takeMode(), 'apply'); // does NOT reset after a send
+  assert.equal(chat.takeMode(), 'apply'); // still apply on the next turn
+  assert.equal(chat.cycleMode(), 'discuss'); // apply → discuss
+  assert.equal(chat.takeMode(), 'discuss');
 });
 
 test('record + setSession persist and restore across a reload', () => {
@@ -76,16 +77,106 @@ test('clear() empties the transcript and persists', () => {
   assert.deepEqual(createChat({ storage, storageKey: KEY }).entries(), []);
 });
 
-test('apply toggle is ephemeral — never persisted across reload', () => {
+test('mode is sticky — persisted across a reload', () => {
   const storage = fakeStorage();
-  createChat({ storage, storageKey: KEY }).setApply(true);
-  assert.equal(createChat({ storage, storageKey: KEY }).applyOn(), false);
+  createChat({ storage, storageKey: KEY }).cycleMode(); // discuss → apply
+  assert.equal(createChat({ storage, storageKey: KEY }).mode(), 'apply');
 });
 
 test('corrupt storage falls back to safe defaults', () => {
   const chat = createChat({ storage: fakeStorage({ [KEY]: '{not json' }), storageKey: KEY });
   assert.deepEqual(chat.entries(), []);
   assert.equal(chat.sessionId(), null);
+});
+
+// ---- Multiple conversations — new chat / switch / delete -------------------
+
+test('fresh chat exposes a single active conversation', () => {
+  const chat = createChat({ storage: fakeStorage(), storageKey: KEY });
+  const list = chat.chats();
+  assert.equal(list.length, 1);
+  assert.equal(list[0].active, true);
+  assert.equal(list[0].title, 'New chat');
+  assert.equal(chat.currentId(), list[0].id);
+});
+
+test('newChat starts a separate transcript + session, leaving the old intact', () => {
+  const chat = createChat({ storage: fakeStorage(), storageKey: KEY });
+  chat.record({ k: 'you', text: 'first thread' });
+  chat.setSession('sess-a');
+  const first = chat.currentId();
+
+  const second = chat.newChat();
+  assert.notEqual(second, first);
+  assert.deepEqual(chat.entries(), []); // fresh chat is empty
+  assert.equal(chat.sessionId(), null); // and has its own (no) session
+
+  chat.selectChat(first);
+  assert.deepEqual(chat.entries(), [{ k: 'you', text: 'first thread' }]);
+  assert.equal(chat.sessionId(), 'sess-a');
+});
+
+test('newChat reuses the current conversation when it is already blank', () => {
+  const chat = createChat({ storage: fakeStorage(), storageKey: KEY });
+  const id = chat.currentId();
+  assert.equal(chat.newChat(), id); // no stacking of empty chats
+  assert.equal(chat.chats().length, 1);
+});
+
+test('chats() lists most-recently-active first', () => {
+  const chat = createChat({ storage: fakeStorage(), storageKey: KEY });
+  chat.record({ k: 'you', text: 'one' });
+  const a = chat.currentId();
+  const b = chat.newChat();
+  chat.record({ k: 'you', text: 'two' });
+  assert.deepEqual(chat.chats().map((c) => c.id), [b, a]); // b most recent
+  chat.selectChat(a); // re-opening bumps recency
+  assert.deepEqual(chat.chats().map((c) => c.id), [a, b]);
+});
+
+test('conversations persist and restore across a reload', () => {
+  const storage = fakeStorage();
+  const chat = createChat({ storage, storageKey: KEY });
+  chat.record({ k: 'you', text: 'alpha' });
+  const a = chat.currentId();
+  chat.newChat();
+  chat.record({ k: 'you', text: 'beta' });
+  const b = chat.currentId();
+
+  const reloaded = createChat({ storage, storageKey: KEY });
+  assert.equal(reloaded.currentId(), b); // open chat restored
+  assert.deepEqual(reloaded.chats().map((c) => c.id).sort(), [a, b].sort());
+  reloaded.selectChat(a);
+  assert.deepEqual(reloaded.entries(), [{ k: 'you', text: 'alpha' }]);
+});
+
+test('deleteChat removes a conversation and falls back to the most recent', () => {
+  const chat = createChat({ storage: fakeStorage(), storageKey: KEY });
+  chat.record({ k: 'you', text: 'keep' });
+  const a = chat.currentId();
+  const b = chat.newChat();
+  chat.record({ k: 'you', text: 'drop' });
+  chat.deleteChat(b); // delete the open one
+  assert.equal(chat.currentId(), a);
+  assert.deepEqual(chat.chats().map((c) => c.id), [a]);
+});
+
+test('deleting the last conversation leaves a fresh empty one', () => {
+  const chat = createChat({ storage: fakeStorage(), storageKey: KEY });
+  chat.record({ k: 'you', text: 'only' });
+  chat.deleteChat(chat.currentId());
+  assert.equal(chat.chats().length, 1);
+  assert.deepEqual(chat.entries(), []);
+});
+
+test('legacy single-chat storage (v1) migrates into one conversation', () => {
+  const storage = fakeStorage({
+    [KEY]: JSON.stringify({ sessionId: 'old-sess', entries: [{ k: 'you', text: 'legacy' }] }),
+  });
+  const chat = createChat({ storage, storageKey: KEY });
+  assert.equal(chat.chats().length, 1);
+  assert.equal(chat.sessionId(), 'old-sess');
+  assert.deepEqual(chat.entries(), [{ k: 'you', text: 'legacy' }]);
 });
 
 // ---- Context chips (0011) — per-turn element attachments -------------------
