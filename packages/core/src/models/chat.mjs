@@ -9,15 +9,17 @@
 //                 and rendered transcript (D15), persisted so a reload restores
 //                 the whole set and which one was open.
 //   - currentId : the open conversation; newChat/selectChat/deleteChat move it.
-//   - apply     : the per-turn "Apply changes" toggle (D16) — default OFF
-//                 (discuss), consumed by takeMode() so an ON turn applies once.
+//   - mode      : the sticky agent posture (Claude-Code-style) cycled with
+//                 Shift+Tab between 'discuss' (read-only, the default) and
+//                 'apply' (edits files). Unlike the old per-turn toggle it does
+//                 NOT reset after a send, and it persists across reloads.
 //
 // Storage is injected so this is unit-testable without a browser; client.js owns
 // every DOM concern (composer, transcript rendering, history menu). Synchronous —
 // no async/await, no Date/random (keeps the persisted shape resume-safe).
 
 const DISCUSS = 'discuss';
-const APPLY_ONCE = 'apply-once';
+const APPLY = 'apply';
 const STORE_V = 2;
 
 const newConversation = (id) => ({ id, sessionId: null, entries: [], seq: 0, title: null });
@@ -27,13 +29,13 @@ export const createChat = ({ storage, storageKey }) => {
   let currentId = null;
   let idSeq = 0; // monotonic source of conversation ids ('chat-N')
   let seq = 0; // monotonic recency stamp — drives history order without Date
-  let apply = false; // ephemeral — never persisted; resets after each send
+  let mode = DISCUSS; // sticky posture (discuss|apply); cycled by Shift+Tab, persisted
   let chips = []; // per-turn context attachments (0011); ephemeral, never persisted
   let chipSeq = 0; // monotonic chip id source (no Date/random — keeps resume safe)
 
   const persist = () => {
     try {
-      storage.setItem(storageKey, JSON.stringify({ v: STORE_V, currentId, idSeq, seq, chats }));
+      storage.setItem(storageKey, JSON.stringify({ v: STORE_V, currentId, idSeq, seq, mode, chats }));
     } catch (_) {}
   };
 
@@ -65,6 +67,7 @@ export const createChat = ({ storage, storageKey }) => {
           }));
         idSeq = typeof d.idSeq === 'number' ? d.idSeq : chats.length;
         seq = typeof d.seq === 'number' ? d.seq : 0;
+        mode = d.mode === APPLY ? APPLY : DISCUSS;
         currentId = chats.some((c) => c.id === d.currentId) ? d.currentId : (chats[0] && chats[0].id) || null;
       } else if (Array.isArray(d.entries) || typeof d.sessionId === 'string') {
         idSeq = 1;
@@ -186,8 +189,14 @@ export const createChat = ({ storage, storageKey }) => {
       persist();
     },
 
-    applyOn: () => apply,
-    setApply: (on) => { apply = !!on; },
+    // Sticky agent posture (Claude-Code-style). `mode()` reads it; `cycleMode()`
+    // flips discuss⇄apply (Shift+Tab) and persists, returning the new mode.
+    mode: () => mode,
+    cycleMode: () => {
+      mode = mode === APPLY ? DISCUSS : APPLY;
+      persist();
+      return mode;
+    },
 
     // Context chips (0011): elements picked while the Chat tab is active, attached
     // to the next turn only. Returned as a shallow array copy. Cleared after a
@@ -201,12 +210,7 @@ export const createChat = ({ storage, storageKey }) => {
     },
     removeChip: (id) => { chips = chips.filter((c) => c.id !== id); },
     clearChips: () => { chips = []; },
-    // The mode for the next send; consumes the Apply toggle so ON applies for
-    // exactly one turn, then falls back to discuss (D16).
-    takeMode: () => {
-      const m = apply ? APPLY_ONCE : DISCUSS;
-      apply = false;
-      return m;
-    },
+    // The mode for the next send. Sticky — no per-turn reset (the cycle owns it).
+    takeMode: () => mode,
   };
 };

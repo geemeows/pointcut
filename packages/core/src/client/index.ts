@@ -345,9 +345,8 @@ export function mount() {
       .chat-empty { opacity: .5; text-align: center; padding: 48px 16px; font-size: 13px; line-height: 1.6; }
       .chat-composer { flex: none; position: relative; border-top: 1px solid rgba(255,255,255,.08); padding: 12px; }
       .chat-composer > .cstatus { padding: 0 2px 8px; }
-      /* "+" add menu — holds the low-frequency composer actions (attach an element
-         as context, toggle apply-this-turn). Pops above the bar like agent-menu. */
-      .add-pick { position: relative; flex: none; }
+      /* Attach-element button — picks an on-page element to attach as context.
+         A direct icon button in the composer bar (no menu). */
       .add-trigger {
         all: unset; box-sizing: border-box; cursor: pointer; display: inline-flex; align-items: center; justify-content: center;
         width: 32px; height: 32px; border-radius: 9px; border: 1px solid #2f343c; color: rgba(231,233,238,.8);
@@ -355,34 +354,22 @@ export function mount() {
       }
       .add-trigger svg { width: 17px; height: 17px; }
       .add-trigger:hover { color: #e7e9ee; background: rgba(255,255,255,.06); }
-      .add-trigger.open { border-color: #4a515c; background: #26282d; color: #fff; }
       .add-trigger.armed { color: var(--pc-accent); border-color: var(--pc-accent); }
-      .add-menu {
-        position: absolute; left: 0; bottom: calc(100% + 8px); display: none; flex-direction: column; gap: 1px;
-        min-width: 210px; z-index: 6; background: #1b1d21; border: 1px solid #2b313c; border-radius: 12px;
-        padding: 6px; box-shadow: 0 16px 44px rgba(0,0,0,.55);
+      /* Agent mode line — Claude-Code-style sticky posture, cycled with Shift+Tab.
+         Sits under the input; clicking it also cycles. discuss = read-only/neutral,
+         apply = accent (the turn will edit files). */
+      .mode-hint {
+        all: unset; box-sizing: border-box; cursor: pointer; align-self: flex-start;
+        display: inline-flex; align-items: center; gap: 6px; padding: 2px 7px; border-radius: 7px;
+        font-size: 11.5px; line-height: 1.45; color: rgba(231,233,238,.5); transition: background .12s, color .12s;
       }
-      .add-menu.open { display: flex; }
-      .add-item {
-        all: unset; box-sizing: border-box; cursor: pointer; display: flex; align-items: center; gap: 9px;
-        padding: 9px 10px; border-radius: 8px; color: #e7e9ee; font-size: 13px;
-      }
-      .add-item:hover { background: #2a2c30; }
-      .add-item svg { width: 16px; height: 16px; flex: none; opacity: .8; }
-      .add-item-label { flex: 1; white-space: nowrap; }
-      .add-item.on { color: var(--pc-accent); }
-      .add-item.on svg { opacity: 1; }
-      /* Apply-changes row carries an iOS-style switch on the right. */
-      .apply-switch {
-        flex: none; width: 30px; height: 17px; border-radius: 999px; background: rgba(255,255,255,.16);
-        position: relative; transition: background .15s;
-      }
-      .apply-switch::after {
-        content: ''; position: absolute; top: 2px; left: 2px; width: 13px; height: 13px; border-radius: 50%;
-        background: #fff; transition: transform .15s;
-      }
-      .apply-item.on .apply-switch { background: var(--pc-accent); }
-      .apply-item.on .apply-switch::after { transform: translateX(13px); }
+      .mode-hint:hover { background: rgba(255,255,255,.06); }
+      .mode-hint .mode-caret { font-weight: 800; letter-spacing: -1.5px; }
+      .mode-hint .mode-name { font-weight: 600; text-transform: lowercase; }
+      .mode-hint .mode-cycle { opacity: .6; }
+      .mode-hint.discuss .mode-caret, .mode-hint.discuss .mode-name { color: rgba(231,233,238,.72); }
+      .mode-hint.apply { color: var(--pc-accent); }
+      .mode-hint.apply .mode-caret, .mode-hint.apply .mode-name { color: var(--pc-accent); }
       /* Per-item send checkbox on a comment card. */
       .crow-check {
         appearance: none; -webkit-appearance: none; flex: none; cursor: pointer;
@@ -786,7 +773,7 @@ export function mount() {
       .agent-opt.sel .agent-opt-check { opacity: 1; }
       /* Drawer-composer instance: shorter (matches the 32px send button), menu
          right-aligned to the trigger, and pushed beside the send button. */
-      .composer-bar .add-pick { margin-right: auto; } /* "+" left; model pill + send float right */
+      .composer-bar .add-trigger { margin-right: auto; } /* attach left; model pill + send float right */
       .composer-bar .dsend { margin-left: 0; }
       .agent-pick.sm .agent-trigger {
         height: 32px; border-radius: 9px; padding: 0 8px; gap: 6px; font-size: 12px;
@@ -1063,23 +1050,15 @@ export function mount() {
                 <span class="composer-spark" aria-hidden="true">${SPARK_ICON}</span>
                 <textarea placeholder="Ask about this page…"></textarea>
               </div>
+              <button class="mode-hint discuss" data-act="chat-mode" type="button" title="Cycle agent mode (Shift+Tab)" aria-label="Cycle agent mode">
+                <span class="mode-caret" aria-hidden="true">⏵⏵</span>
+                <span class="mode-name">discuss mode</span>
+                <span class="mode-cycle">(shift+tab to cycle)</span>
+              </button>
               <div class="composer-bar">
-                <div class="add-pick">
-                  <button class="add-trigger" data-act="add-toggle" title="Add context & options" aria-label="Add context & options" aria-expanded="false">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
-                  </button>
-                  <div class="add-menu">
-                    <button class="add-item" data-act="chat-pick" title="Pick an element on the page to attach as context" aria-pressed="false">
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8V5a2 2 0 0 1 2-2h3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M21 16v3a2 2 0 0 1-2 2h-3"/><circle cx="12" cy="12" r="2.5"/></svg>
-                      <span class="add-item-label">Attach element</span>
-                    </button>
-                    <button class="add-item apply-item" data-act="chat-apply" title="Apply changes this turn (otherwise propose only)" aria-pressed="false">
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
-                      <span class="add-item-label">Apply changes</span>
-                      <span class="apply-switch"></span>
-                    </button>
-                  </div>
-                </div>
+                <button class="add-trigger" data-act="chat-pick" title="Attach an element on the page as context" aria-label="Attach element" aria-pressed="false">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8V5a2 2 0 0 1 2-2h3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M21 16v3a2 2 0 0 1-2 2h-3"/><circle cx="12" cy="12" r="2.5"/></svg>
+                </button>
                 <div class="agent-pick sm right">
                   <button class="agent-trigger" data-act="agent-toggle" title="Coding agent" aria-label="Coding agent">
                     <svg class="agent-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="16" height="16" x="4" y="4" rx="2"/><rect width="6" height="6" x="9" y="9" rx="1"/><path d="M15 2v2"/><path d="M15 20v2"/><path d="M2 15h2"/><path d="M2 9h2"/><path d="M20 15h2"/><path d="M20 9h2"/><path d="M9 2v2"/><path d="M9 20v2"/></svg>
@@ -1117,9 +1096,9 @@ export function mount() {
         <span class="divider"></span>
         <button class="tool" data-act="pick" title="Pick element / region">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8V5a2 2 0 0 1 2-2h3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M21 16v3a2 2 0 0 1-2 2h-3"/><circle cx="12" cy="12" r="2.5"/></svg>
-          <span class="lbl">Pick</span><span class="kbd">${KBD('S')}</span>
+          <span class="lbl">Pick</span><span class="kbd">${KBD("S")}</span>
         </button>
-        <button class="icon-btn" data-act="comments" data-tip="Toggle comments  ${KBD('C')}">
+        <button class="icon-btn" data-act="comments" data-tip="Toggle comments  ${KBD("C")}">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M8 9h8M8 13h5"/></svg>
           <span class="cbadge">0</span>
         </button>
@@ -1182,7 +1161,7 @@ export function mount() {
   const chatText = $('.chat-composer textarea');
   const chatSend = $('.chat-composer [data-act="chat-send"]');
   const chatStatus = $('.chat-composer .cstatus');
-  const chatApplyBtn = $('.chat-composer [data-act="chat-apply"]');
+  const chatModeHint = $('.chat-composer [data-act="chat-mode"]');
   const chatPickBtn = $('.chat-composer [data-act="chat-pick"]');
   const chatChips = $('.chat-composer .chat-chips');
   const chatTitle = $('.chat-head .chat-title');
@@ -1194,15 +1173,6 @@ export function mount() {
     chatHistMenu.classList.remove('open');
     chatHistBtn.classList.remove('open');
     chatHistBtn.setAttribute('aria-expanded', 'false');
-  };
-  // "+" add menu (holds Attach element + Apply changes) and its trigger.
-  const addWrap = $('.chat-composer .add-pick');
-  const addMenu = $('.chat-composer .add-menu');
-  const addTrigger = $('.chat-composer [data-act="add-toggle"]');
-  const closeAddMenu = () => {
-    addMenu.classList.remove('open');
-    addTrigger.classList.remove('open');
-    addTrigger.setAttribute('aria-expanded', 'false');
   };
   let surface = null;
   // The selected coding Agent + model (picker value) and the list the bridge says
@@ -2103,17 +2073,18 @@ export function mount() {
 
   // ---- Chat tab (0010) -----------------------------------------------------
   // A continuous discuss session, separate from the Comments-tab runs above:
-  // its own session id (chat.sessionId()), its own transcript, and an "Apply
-  // changes" toggle that flips a single turn from discuss → apply-once (D16).
+  // its own session id (chat.sessionId()), its own transcript, and a sticky
+  // posture (chat.mode()) cycled discuss⇄apply with Shift+Tab or the mode line.
   // Reuses the shared run gate (agentRunning) and stream primitives, so a chat
   // turn and a comments run can never interleave on the shared streaming state.
   const chatStateUpdate = () => {
     const hasText = chatText.value.trim().length > 0;
     const hasChips = chat.chips().length > 0;
     chatSend.disabled = agentRunning || !selectedAgent || (!hasText && !hasChips);
-    const on = chat.applyOn();
-    chatApplyBtn.classList.toggle('on', on);
-    chatApplyBtn.setAttribute('aria-pressed', on ? 'true' : 'false');
+    const apply = chat.mode() === 'apply';
+    chatModeHint.classList.toggle('apply', apply);
+    chatModeHint.classList.toggle('discuss', !apply);
+    chatModeHint.querySelector('.mode-name').textContent = apply ? 'apply mode' : 'discuss mode';
   };
   // One chip per element attached to the current chat draft (0011). Numbered to
   // match the element references the turn's markdown cites.
@@ -2283,7 +2254,7 @@ export function mount() {
     if (empty) chatStream.innerHTML = ''; // first turn — drop the placeholder
     agentStartAt = Date.now();
     startThinking();
-    const mode = chat.takeMode(); // discuss, or apply-once for this one turn (then OFF)
+    const mode = chat.takeMode(); // sticky posture: 'discuss' or 'apply' (Shift+Tab cycles)
 
     // Fold any attached context chips into the turn: their element references go
     // into the markdown (0011).
@@ -2439,9 +2410,8 @@ export function mount() {
     picking = on;
     pickMode = on ? mode : 'comment';
     pickBtn.classList.toggle('on', on && pickMode === 'comment');
-    chatPickBtn.classList.toggle('on', on && pickMode === 'chat');
+    chatPickBtn.classList.toggle('armed', on && pickMode === 'chat'); // accent the attach button while arming a pick
     chatPickBtn.setAttribute('aria-pressed', on && pickMode === 'chat' ? 'true' : 'false');
-    addTrigger.classList.toggle('armed', on && pickMode === 'chat'); // reflect armed pick on the closed "+" trigger
     if (!on) {
       hideOutline();
       marquee.style.display = 'none';
@@ -2557,7 +2527,9 @@ export function mount() {
     e.stopPropagation();
     const el = locator.stampedAncestor(target);
     if (pickMode === 'chat') {
-      attachChatChip(el); // stays armed so several elements can be attached in a row
+      attachChatChip(el);
+      setPicking(false); // single-shot: one pick attaches, then dismiss selection
+      chatText.focus(); // land the cursor in the composer so you can type right away
       return;
     }
     openNote({ el }, el.getBoundingClientRect(), null);
@@ -2797,6 +2769,11 @@ export function mount() {
     if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
       e.preventDefault();
       runChat();
+    } else if (e.key === 'Tab' && e.shiftKey) {
+      // Claude-Code-style: cycle the sticky agent posture without leaving the input.
+      e.preventDefault();
+      chat.cycleMode();
+      chatStateUpdate();
     }
   });
 
@@ -2854,21 +2831,12 @@ export function mount() {
       switchChat();
       return;
     }
-    if (e.target.closest('[data-act="add-toggle"]')) {
-      const open = !addMenu.classList.contains('open');
-      closeAgentMenu(); // only one composer menu open at a time
-      addMenu.classList.toggle('open', open); // "+" menu: attach element / apply toggle
-      addTrigger.classList.toggle('open', open);
-      addTrigger.setAttribute('aria-expanded', open ? 'true' : 'false');
-      return;
-    }
-    if (e.target.closest('[data-act="chat-apply"]')) {
-      chat.setApply(!chat.applyOn()); // toggle "Apply changes" for the next turn (menu stays open)
+    if (e.target.closest('[data-act="chat-mode"]')) {
+      chat.cycleMode(); // discuss ⇄ apply (also reachable via Shift+Tab in the composer)
       chatStateUpdate();
       return;
     }
     if (e.target.closest('[data-act="chat-pick"]')) {
-      closeAddMenu(); // picking happens on the page — get the menu out of the way
       togglePick('chat'); // arm element-pick that attaches a context chip
       return;
     }
@@ -2994,7 +2962,6 @@ export function mount() {
     if (e.key === 'Escape') {
       if (pickers.some((p) => p.menu.classList.contains('open'))) { closeAgentMenu(); return; }
       if (gearMenu.classList.contains('open')) { closeGearMenu(); return; }
-      if (addMenu.classList.contains('open')) { closeAddMenu(); return; }
       if (chatHistMenu.classList.contains('open')) { closeChatHistory(); return; }
       if (cpanel.classList.contains('open')) cpanel.classList.remove('open');
       else if (drawerOpen) closeDrawer();
@@ -3129,7 +3096,6 @@ export function mount() {
     p.wrap.addEventListener('click', (e) => {
       if (e.target.closest('[data-act="agent-toggle"]')) {
         const wasOpen = p.menu.classList.contains('open');
-        closeAddMenu(); // composer "+" menu and agent menu are mutually exclusive
         closeAgentMenu(); // only one menu open at a time
         if (!wasOpen) { p.menu.classList.add('open'); p.trigger.classList.add('open'); }
         return;
@@ -3160,7 +3126,6 @@ export function mount() {
     // The gear menu hosts one of those comboboxes, so close it only once the
     // press lands outside the whole gear control (and not on its open submenu).
     if (gearMenu.classList.contains('open') && !e.composedPath().includes(gearWrap)) closeGearMenu();
-    if (addMenu.classList.contains('open') && !e.composedPath().includes(addWrap)) closeAddMenu();
     if (chatHistMenu.classList.contains('open') && !e.composedPath().includes(chatHistWrap)) closeChatHistory();
   }, true);
   bridgeFetch('/__pointcut/agents')

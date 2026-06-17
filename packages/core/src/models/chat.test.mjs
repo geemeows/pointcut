@@ -15,21 +15,22 @@ const fakeStorage = (seed) => {
 
 const KEY = 'luciq-design-chat';
 
-test('fresh chat: empty transcript, no session, apply OFF → discuss', () => {
+test('fresh chat: empty transcript, no session, mode defaults to discuss', () => {
   const chat = createChat({ storage: fakeStorage(), storageKey: KEY });
   assert.deepEqual(chat.entries(), []);
   assert.equal(chat.sessionId(), null);
-  assert.equal(chat.applyOn(), false);
+  assert.equal(chat.mode(), 'discuss');
   assert.equal(chat.takeMode(), 'discuss');
 });
 
-test('Apply ON makes one turn apply-once, then resets to OFF (D16)', () => {
+test('cycleMode flips discuss⇄apply and stays sticky across sends', () => {
   const chat = createChat({ storage: fakeStorage(), storageKey: KEY });
-  chat.setApply(true);
-  assert.equal(chat.applyOn(), true);
-  assert.equal(chat.takeMode(), 'apply-once'); // consumes the toggle
-  assert.equal(chat.applyOn(), false); // returns to OFF after the turn
-  assert.equal(chat.takeMode(), 'discuss'); // next turn is back to discuss
+  assert.equal(chat.cycleMode(), 'apply'); // discuss → apply
+  assert.equal(chat.mode(), 'apply');
+  assert.equal(chat.takeMode(), 'apply'); // does NOT reset after a send
+  assert.equal(chat.takeMode(), 'apply'); // still apply on the next turn
+  assert.equal(chat.cycleMode(), 'discuss'); // apply → discuss
+  assert.equal(chat.takeMode(), 'discuss');
 });
 
 test('record + setSession persist and restore across a reload', () => {
@@ -76,10 +77,10 @@ test('clear() empties the transcript and persists', () => {
   assert.deepEqual(createChat({ storage, storageKey: KEY }).entries(), []);
 });
 
-test('apply toggle is ephemeral — never persisted across reload', () => {
+test('mode is sticky — persisted across a reload', () => {
   const storage = fakeStorage();
-  createChat({ storage, storageKey: KEY }).setApply(true);
-  assert.equal(createChat({ storage, storageKey: KEY }).applyOn(), false);
+  createChat({ storage, storageKey: KEY }).cycleMode(); // discuss → apply
+  assert.equal(createChat({ storage, storageKey: KEY }).mode(), 'apply');
 });
 
 test('corrupt storage falls back to safe defaults', () => {
