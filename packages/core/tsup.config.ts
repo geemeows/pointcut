@@ -23,12 +23,13 @@ export default defineConfig([
   },
   {
     // Pure authoring models as a browser-safe entry (no Node deps), so in-page
-    // consumers can import Tokens/Provenance without the Node bundle. Plain
-    // .mjs source carries no types, so no dts here.
+    // consumers can import Tokens/Provenance without the Node bundle. tsup infers
+    // .d.ts from the JSDoc-annotated .mjs sources (same as the main `index`
+    // entry, which re-exports these), so the `./models` subpath ships types too.
     entry: { 'models/index': 'src/models/index.mjs' },
     format: ['esm'],
     platform: 'browser',
     target: 'es2022',
-    dts: false,
+    dts: true,
   },
 ]);
