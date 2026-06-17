@@ -422,9 +422,35 @@ export function mount() {
       }
       .composer-box:focus-within { border-color: var(--pc-accent); box-shadow: 0 0 0 3px rgba(182,250,5,.22); }
       /* Input row: brand spark sits to the left of the first line of the textarea. */
-      .composer-input { display: flex; align-items: flex-start; gap: 9px; }
+      .composer-input { position: relative; display: flex; align-items: flex-start; gap: 9px; }
       .composer-spark { flex: none; width: 18px; height: 18px; margin-top: 2px; color: var(--pc-accent); pointer-events: none; }
       .composer-spark svg { width: 100%; height: 100%; display: block; }
+      /* "/" slash-menu — project skills/commands the chosen agent can invoke.
+         Pops ABOVE the input (composer sits low in the drawer); opens on "/" at
+         the start of a token, filters as you type. Mirrors .agent-menu styling. */
+      .skill-menu {
+        position: absolute; left: 0; right: 0; bottom: calc(100% + 8px); display: none; flex-direction: column; gap: 1px;
+        max-height: 260px; overflow-y: auto; z-index: 8;
+        background: #1b1d21; border: 1px solid #2b313c; border-radius: 12px; padding: 6px;
+        box-shadow: 0 16px 44px rgba(0,0,0,.55);
+      }
+      .skill-menu.open { display: flex; }
+      .skill-opt {
+        all: unset; box-sizing: border-box; cursor: pointer; display: flex; flex-direction: column; gap: 2px;
+        padding: 7px 9px; border-radius: 8px; color: #e7e9ee;
+      }
+      .skill-opt:hover, .skill-opt.active { background: #2a2c30; }
+      .skill-opt-top { display: flex; align-items: center; gap: 7px; }
+      .skill-opt-name { font-size: 13px; font-weight: 500; }
+      .skill-opt-name b { color: var(--pc-accent); font-weight: 600; } /* matched query span */
+      .skill-opt-kind {
+        font-size: 10px; line-height: 1; text-transform: uppercase; letter-spacing: .04em;
+        color: #8b93a1; border: 1px solid rgba(255,255,255,.12); border-radius: 5px; padding: 2px 4px; flex: none;
+      }
+      .skill-opt-desc {
+        font-size: 11px; color: #8b93a1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%;
+      }
+      .skill-menu-empty { padding: 8px 9px; font-size: 12px; color: #8b93a1; }
       .composer-chips, .chat-chips { display: flex; flex-wrap: wrap; gap: 6px; }
       .composer-chips:empty, .chat-chips:empty { display: none; }
       .chip {
@@ -1049,6 +1075,7 @@ export function mount() {
               <div class="composer-input">
                 <span class="composer-spark" aria-hidden="true">${SPARK_ICON}</span>
                 <textarea placeholder="Ask about this page…"></textarea>
+                <div class="skill-menu" role="listbox" aria-label="Project skills"></div>
               </div>
               <button class="mode-hint discuss" data-act="chat-mode" type="button" title="Cycle agent mode (Shift+Tab)" aria-label="Cycle agent mode">
                 <span class="mode-caret" aria-hidden="true">⏵⏵</span>
@@ -1164,6 +1191,7 @@ export function mount() {
   const chatModeHint = $('.chat-composer [data-act="chat-mode"]');
   const chatPickBtn = $('.chat-composer [data-act="chat-pick"]');
   const chatChips = $('.chat-composer .chat-chips');
+  const chatSkillMenu = $('.chat-composer .skill-menu');
   const chatTitle = $('.chat-head .chat-title');
   // Chat history — "New chat" + a dropdown listing previous conversations.
   const chatHistWrap = $('.chat-head .chat-hist-wrap');
@@ -1181,6 +1209,10 @@ export function mount() {
   let selectedAgent = null;
   let selectedModel = '';
   let availableAgents = [];
+  // Skills/commands the chosen agent can invoke at the project root (the "/" menu).
+  // Fetched per agent from the Bridge's skills-probe; cached client-side by agent.
+  let availableSkills = [];
+  const skillsByAgent = Object.create(null);
   // Comments-tab top action bar (replaces the old foot composer).
   const drawerActions = $('.drawer-actions');
   const selInfo = $('.drawer-actions .sel-info');
@@ -2239,6 +2271,24 @@ export function mount() {
       bridgeFetch,
     );
   };
+  // Turn the slash-menu picks into prompt text. A leading run of "/name" tokens
+  // (chosen from the "/" menu) is peeled off the typed text: a *skill* becomes an
+  // explicit "Use the X skill." instruction (skills are model-invoked in headless
+  // runs — there's no CLI flag to force one), while a *command*/*prompt* is left
+  // as its literal /name invocation. Unknown tokens are left in the body as-is.
+  const applySkillTokens = (raw) => {
+    const directives = [];
+    let rest = raw;
+    for (;;) {
+      const m = rest.match(/^\/([A-Za-z0-9][\w-]*)(?:\s+|$)/);
+      if (!m) break;
+      const item = availableSkills.find((s) => s.name === m[1]);
+      if (!item) break; // not a known skill/command — leave it in the text
+      directives.push(item.kind === 'skill' ? `Use the "${item.name}" skill.` : `/${item.name}`);
+      rest = rest.slice(m[0].length);
+    }
+    return { directives: directives.join('\n'), body: rest.trim() };
+  };
   const runChat = () => {
     const text = chatText.value.trim();
     const chips = chat.chips();
@@ -2256,12 +2306,14 @@ export function mount() {
     startThinking();
     const mode = chat.takeMode(); // sticky posture: 'discuss' or 'apply' (Shift+Tab cycles)
 
-    // Fold any attached context chips into the turn: their element references go
-    // into the markdown (0011).
-    let markdown = text;
+    // Peel any leading slash-menu picks off the typed text into agent directives,
+    // then fold attached context chips in: directives → body → chips (0011).
+    const { directives, body } = applySkillTokens(text);
+    let markdown = body;
     if (chips.length) {
-      markdown = (text ? text + '\n\n' : '') + contextChipsBlock(chips);
+      markdown = (body ? body + '\n\n' : '') + contextChipsBlock(chips);
     }
+    if (directives) markdown = directives + (markdown ? '\n\n' + markdown : '');
     chat.clearChips(); // attachments are per-turn — no auto-carry (D13)
     renderChatChips();
     chatStateUpdate(); // reflect the toggle reset + cleared chips
@@ -2764,8 +2816,108 @@ export function mount() {
     else if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); sendCommentsToChat(); }
   });
 
-  chatText.addEventListener('input', chatStateUpdate);
+  // ---- "/" slash-menu — pick a project skill/command into the composer -------
+  // Opens when the caret sits in a leading "/token" (the first run of slash
+  // tokens), filters as you type, and inserts "/name " on pick. The pick is just
+  // composer text; runChat() (via applySkillTokens) is what turns it into agent
+  // directives. Keyboard: ↑/↓ move, Enter/Tab pick, Esc closes.
+  let skillMenuOpen = false;
+  let skillActive = 0; // highlighted row into skillShown
+  let skillShown = []; // currently filtered items
+  let skillTokenStart = 0; // index of the '/' being completed, in the textarea
+
+  // The slash-token under the caret, if the caret is within the leading run of
+  // "/token" tokens. Returns { query, start } or null.
+  const slashContext = () => {
+    const caret = chatText.selectionStart == null ? chatText.value.length : chatText.selectionStart;
+    const head = chatText.value.slice(0, caret);
+    const m = head.match(/^((?:\/[A-Za-z0-9][\w-]*\s+)*)\/([A-Za-z0-9][\w-]*)?$/);
+    return m ? { query: m[2] || '', start: m[1].length } : null;
+  };
+  const filterSkills = (q) => {
+    const ql = q.toLowerCase();
+    return availableSkills
+      .filter((s) => s.name.toLowerCase().includes(ql))
+      .sort((a, b) => Number(b.name.toLowerCase().startsWith(ql)) - Number(a.name.toLowerCase().startsWith(ql)));
+  };
+  // Bold the matched span in a name.
+  const markName = (name, q) => {
+    const i = q ? name.toLowerCase().indexOf(q.toLowerCase()) : -1;
+    if (i < 0) return escHtml(name);
+    return escHtml(name.slice(0, i)) + '<b>' + escHtml(name.slice(i, i + q.length)) + '</b>' + escHtml(name.slice(i + q.length));
+  };
+  const closeSkillMenu = () => {
+    if (!skillMenuOpen) return;
+    skillMenuOpen = false;
+    skillActive = 0;
+    chatSkillMenu.classList.remove('open');
+  };
+  const refreshSkillActive = () => {
+    const opts = chatSkillMenu.querySelectorAll('.skill-opt');
+    opts.forEach((o, i) => o.classList.toggle('active', i === skillActive));
+    if (opts[skillActive]) opts[skillActive].scrollIntoView({ block: 'nearest' });
+  };
+  const updateSkillMenu = () => {
+    const ctx = slashContext();
+    if (!ctx) return closeSkillMenu();
+    skillTokenStart = ctx.start;
+    skillShown = filterSkills(ctx.query);
+    if (skillActive >= skillShown.length) skillActive = 0;
+    if (!availableSkills.length) {
+      chatSkillMenu.innerHTML = '<div class="skill-menu-empty">No project skills found</div>';
+    } else if (!skillShown.length) {
+      chatSkillMenu.innerHTML = '<div class="skill-menu-empty">No match</div>';
+    } else {
+      chatSkillMenu.innerHTML = skillShown
+        .map(
+          (s, i) =>
+            `<button type="button" class="skill-opt${i === skillActive ? ' active' : ''}" role="option" data-name="${escHtml(s.name)}">` +
+            `<span class="skill-opt-top"><span class="skill-opt-name">/${markName(s.name, ctx.query)}</span>` +
+            `<span class="skill-opt-kind">${escHtml(s.kind)}</span></span>` +
+            (s.description ? `<span class="skill-opt-desc">${escHtml(s.description)}</span>` : '') +
+            '</button>',
+        )
+        .join('');
+    }
+    skillMenuOpen = true;
+    chatSkillMenu.classList.add('open');
+  };
+  const pickSkill = (item) => {
+    if (!item) return;
+    const caret = chatText.selectionStart == null ? chatText.value.length : chatText.selectionStart;
+    const v = chatText.value;
+    const insert = '/' + item.name + ' ';
+    chatText.value = v.slice(0, skillTokenStart) + insert + v.slice(caret);
+    const pos = skillTokenStart + insert.length;
+    chatText.setSelectionRange(pos, pos);
+    closeSkillMenu();
+    chatText.focus();
+    chatStateUpdate();
+  };
+  // Pick on mousedown (not click) with preventDefault so the textarea keeps focus
+  // and no blur fires mid-selection.
+  chatSkillMenu.addEventListener('mousedown', (e) => {
+    const opt = e.target.closest('.skill-opt');
+    if (!opt) return;
+    e.preventDefault();
+    pickSkill(skillShown.find((s) => s.name === opt.dataset.name));
+  });
+  chatText.addEventListener('blur', closeSkillMenu);
+
+  chatText.addEventListener('input', () => {
+    chatStateUpdate();
+    updateSkillMenu();
+  });
   chatText.addEventListener('keydown', (e) => {
+    // While the slash-menu is open, it owns navigation/selection keys.
+    if (skillMenuOpen) {
+      if (e.key === 'Escape') { e.preventDefault(); closeSkillMenu(); return; }
+      if (skillShown.length) {
+        if (e.key === 'ArrowDown') { e.preventDefault(); skillActive = (skillActive + 1) % skillShown.length; refreshSkillActive(); return; }
+        if (e.key === 'ArrowUp') { e.preventDefault(); skillActive = (skillActive - 1 + skillShown.length) % skillShown.length; refreshSkillActive(); return; }
+        if (e.key === 'Enter' || (e.key === 'Tab' && !e.shiftKey)) { e.preventDefault(); pickSkill(skillShown[skillActive]); return; }
+      }
+    }
     if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
       e.preventDefault();
       runChat();
@@ -3066,6 +3218,25 @@ export function mount() {
       .join('');
   const renderGearModels = (label) => { gearModelMenu.innerHTML = gearModelHtml(); gearModelVal.textContent = label; };
 
+  // Skills/commands the chosen agent exposes at the project root — fed to the "/"
+  // slash-menu. Fetched per agent (claude/codex scan different locations), cached
+  // client-side so switching back is instant.
+  const applySkills = (list) => {
+    availableSkills = Array.isArray(list) ? list : [];
+    if (skillMenuOpen) updateSkillMenu(); // refresh an open menu once results land
+  };
+  const loadSkills = (agent) => {
+    if (!agent) return applySkills([]);
+    if (skillsByAgent[agent]) return applySkills(skillsByAgent[agent]);
+    bridgeFetch('/__pointcut/skills?agent=' + encodeURIComponent(agent))
+      .then((r) => (r.ok ? r.json() : { skills: [] }))
+      .then((d) => {
+        skillsByAgent[agent] = (d && d.skills) || [];
+        applySkills(skillsByAgent[agent]);
+      })
+      .catch(() => applySkills([]));
+  };
+
   const select = (agent, model, label) => {
     selectedAgent = agent;
     selectedModel = model;
@@ -3076,6 +3247,7 @@ export function mount() {
     renderGearModels(label);
     refreshCount();
     updateCommentsActions();
+    loadSkills(agent); // the "/" menu follows the agent
     chatStateUpdate();
   };
   const applyAgents = (agents) => {
@@ -3090,6 +3262,7 @@ export function mount() {
     renderGearModels(label);
     refreshCount();
     updateCommentsActions();
+    loadSkills(selectedAgent); // prime the "/" menu for the default agent
     chatStateUpdate();
   };
   pickers.forEach((p) => {
