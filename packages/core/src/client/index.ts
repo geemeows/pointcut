@@ -448,6 +448,7 @@ export function mount() {
         width: 15px; height: 15px; border-radius: 50%; background: var(--pc-accent); color: var(--pc-ink); font-size: 9px;
         font-weight: 700; display: inline-flex; align-items: center; justify-content: center; flex: none;
       }
+      .chip .chip-ico { width: 13px; height: 13px; flex: none; color: var(--pc-accent); opacity: .85; }
       .chip .chip-lbl { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 160px; }
       .chip .chip-x { all: unset; cursor: pointer; opacity: .5; font-size: 14px; line-height: 1; padding: 0 1px; flex: none; }
       .chip .chip-x:hover { opacity: 1; color: #ff8d8d; }
@@ -875,7 +876,29 @@ export function mount() {
       .evt { display: flex; gap: 8px; line-height: 1.5; word-break: break-word; font-size: 13px; }
       .evt .ic { flex: none; opacity: .55; font-family: ui-monospace, monospace; }
       .evt.tool .ic { color: var(--pc-accent); opacity: 1; }
-      .evt.text { color: #cfd5df; white-space: pre-wrap; }
+      .evt.text { color: #cfd5df; }
+      .evt .msg { min-width: 0; }
+      .evt.text .msg { display: block; }
+      .evt.text code { overflow-wrap: anywhere; }
+      .evt.text .msg > :first-child { margin-top: 0; }
+      .evt.text .msg > :last-child { margin-bottom: 0; }
+      .evt.text p { margin: 0 0 8px; }
+      .evt.text h1, .evt.text h2, .evt.text h3, .evt.text h4, .evt.text h5, .evt.text h6 {
+        margin: 12px 0 6px; font-size: 13px; font-weight: 700; color: #e7e9ee;
+      }
+      .evt.text strong { color: #fff; font-weight: 600; }
+      .evt.text em { font-style: italic; }
+      .evt.text code {
+        font-family: ui-monospace, monospace; font-size: 12px; background: #2a2c30;
+        padding: 1px 4px; border-radius: 4px; color: #d7c3a0;
+      }
+      .evt.text pre {
+        margin: 0 0 8px; background: #16181c; border: 1px solid #2a2c30; border-radius: 6px;
+        padding: 8px 10px; overflow-x: auto;
+      }
+      .evt.text pre code { background: none; padding: 0; border-radius: 0; color: #cfd5df; white-space: pre; }
+      .evt.text ul { margin: 0 0 8px; padding-left: 18px; list-style: disc; }
+      .evt.text li { margin: 2px 0; }
       .evt.you { color: #fff; }
       .evt.you .ic { color: var(--pc-accent); opacity: 1; }
       .evt.tool code { font-family: ui-monospace, monospace; color: #aeb6c2; }
@@ -1837,6 +1860,68 @@ export function mount() {
   // it in. The client stays agent-agnostic — it only consumes Actions.
   const escHtml = (s) =>
     String(s).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+  // Minimal, dependency-free markdown → HTML for assistant prose. Handles the
+  // subset agents actually emit (headings, bold/italic, inline + fenced code,
+  // bullet lists, paragraphs). Everything is HTML-escaped first, so agent output
+  // can never inject markup. Kept inline to stay clean-room / zero-dependency.
+  const renderMd = (src) => {
+    const blocks = [];
+    let text = String(src).replace(/\r\n/g, '\n');
+    // Pull fenced code out first so its body isn't markdown-processed. Match
+    // closed fences, then a dangling open fence (mid-stream) up to end of text.
+    text = text.replace(/```[^\n]*\n?([\s\S]*?)```/g, (_m, code) => {
+      blocks.push(code.replace(/\n+$/, ''));
+      return ` CB${blocks.length - 1} `;
+    });
+    text = text.replace(/```[^\n]*\n?([\s\S]*)$/, (_m, code) => {
+      blocks.push(code.replace(/\n+$/, ''));
+      return ` CB${blocks.length - 1} `;
+    });
+    const inline = (s) =>
+      escHtml(s)
+        .replace(/`([^`]+)`/g, (_m, c) => `<code>${c}</code>`)
+        .replace(/\*\*([^*]+?)\*\*/g, '<strong>$1</strong>')
+        .replace(/(^|[^*])\*([^*]+?)\*/g, '$1<em>$2</em>');
+    const out = [];
+    let para = [];
+    let list = [];
+    const flushPara = () => {
+      if (para.length) out.push(`<p>${para.map(inline).join('<br>')}</p>`);
+      para = [];
+    };
+    const flushList = () => {
+      if (list.length) out.push(`<ul>${list.map((li) => `<li>${inline(li)}</li>`).join('')}</ul>`);
+      list = [];
+    };
+    text.split('\n').forEach((raw) => {
+      const line = raw.replace(/\s+$/, '');
+      const cb = line.match(/^ CB(\d+) $/);
+      const h = line.match(/^(#{1,6})\s+(.*)$/);
+      const li = line.match(/^\s*[-*]\s+(.*)$/);
+      if (cb) {
+        flushPara();
+        flushList();
+        out.push(`<pre><code>${escHtml(blocks[+cb[1]])}</code></pre>`);
+      } else if (h) {
+        flushPara();
+        flushList();
+        const lvl = h[1].length;
+        out.push(`<h${lvl}>${inline(h[2])}</h${lvl}>`);
+      } else if (li) {
+        flushPara();
+        list.push(li[1]);
+      } else if (!line.trim()) {
+        flushPara();
+        flushList();
+      } else {
+        flushList();
+        para.push(line);
+      }
+    });
+    flushPara();
+    flushList();
+    return out.join('');
+  };
   const relPath = (p) => String(p).split('/').slice(-2).join('/');
   const TOOL_ICONS = { Edit: '✎', MultiEdit: '✎', Write: '✎', Read: '→', Bash: '$', Grep: '⌕', Glob: '⌕' };
 
@@ -1865,9 +1950,9 @@ export function mount() {
     }
     if (isDelta) {
       openTextBuf += text;
-      openTextMsg.innerHTML = escHtml(openTextBuf);
+      openTextMsg.innerHTML = renderMd(openTextBuf);
     } else {
-      openTextMsg.innerHTML = escHtml(text); // authoritative full text
+      openTextMsg.innerHTML = renderMd(text); // authoritative full text
       closeTextRow();
     }
     box.scrollTop = box.scrollHeight;
@@ -2039,9 +2124,16 @@ export function mount() {
       chip.className = 'chip';
       chip.dataset.chip = c.id;
       chip.title = `${c.loc || 'source unknown'} — ${c.label}`;
+      // Show the source reference (e.g. App.vue:25:7) — that's what the turn cites
+      // and sends to the agent. Fall back to the element label when unstamped.
+      const ref = c.loc ? c.loc.split('/').pop() : '';
       chip.innerHTML =
-        `<span class="chip-num">${i + 1}</span>` +
-        `<span class="chip-lbl">${escHtml(c.label)}</span>` +
+        (ref
+          ? `<svg class="chip-ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round">` +
+            `<path d="M9 1.75H4.5A1.5 1.5 0 0 0 3 3.25v9.5a1.5 1.5 0 0 0 1.5 1.5h7a1.5 1.5 0 0 0 1.5-1.5V5.75Z"/>` +
+            `<path d="M9 1.75V5.75H13"/></svg>`
+          : `<span class="chip-num">${i + 1}</span>`) +
+        `<span class="chip-lbl">${escHtml(ref || c.label)}</span>` +
         `<button class="chip-x" data-act="chat-chip-remove" title="Remove">×</button>`;
       chatChips.appendChild(chip);
     });
@@ -2206,7 +2298,7 @@ export function mount() {
     if (text) cLog('you', '›', escHtml(text));
     if (text) chat.record({ k: 'you', text });
     if (chips.length) {
-      const labels = chips.map((c) => c.label).join(', ');
+      const labels = chips.map((c) => (c.loc ? c.loc.split('/').pop() : c.label)).join(', ');
       cLog('ctx', '↳', escHtml(labels));
       chat.record({ k: 'ctx', labels });
     }
