@@ -301,6 +301,46 @@ export function mount() {
       .chat-pane { display: none; flex: 1 1 0; min-height: 0; flex-direction: column; }
       .drawer.tab-chat .chat-pane { display: flex; }
       .drawer.tab-chat .drawer-list, .drawer.tab-chat .drawer-stream, .drawer.tab-chat .drawer-actions, .drawer.tab-chat .add-note-box { display: none; }
+      /* Chat header — start a fresh thread or jump back to a previous one. */
+      .chat-head { flex: none; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 12px; border-bottom: 1px solid rgba(255,255,255,.08); }
+      /* Conversation title — agent-generated from context (falls back to the
+         first message, then "New chat"). The new-chat + history actions are
+         icon-only buttons grouped on the right. */
+      .chat-title { flex: 1 1 auto; min-width: 0; font-size: 13px; font-weight: 600; color: #e7e9ee; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .chat-title.untitled { color: rgba(231,233,238,.5); font-weight: 500; }
+      .chat-head-actions { flex: none; display: flex; align-items: center; gap: 2px; }
+      .chat-hist-wrap { position: relative; }
+      .chat-icon-btn {
+        appearance: none; display: inline-flex; align-items: center; justify-content: center; cursor: pointer;
+        background: none; border: 1px solid transparent; border-radius: 8px; color: rgba(231,233,238,.7);
+        width: 30px; height: 30px; padding: 0;
+      }
+      .chat-icon-btn:hover, .chat-icon-btn.open { background: rgba(255,255,255,.08); color: #e7e9ee; }
+      .chat-icon-btn svg { width: 16px; height: 16px; }
+      .chat-hist-menu {
+        display: none; position: absolute; top: calc(100% + 6px); right: 0; z-index: 5; width: 248px; max-height: 320px; overflow-y: auto;
+        background: #1b1d23; border: 1px solid rgba(255,255,255,.12); border-radius: 10px; padding: 4px;
+        box-shadow: 0 12px 32px rgba(0,0,0,.45);
+      }
+      .chat-hist-menu.open { display: block; }
+      .chat-hist-empty { opacity: .5; font-size: 12px; padding: 10px 12px; text-align: center; }
+      .chat-hist-item {
+        display: flex; align-items: center; gap: 6px; border-radius: 7px; padding: 0 2px 0 0;
+      }
+      .chat-hist-item:hover { background: rgba(255,255,255,.06); }
+      .chat-hist-item.active { background: rgba(255,255,255,.09); }
+      .chat-hist-open {
+        appearance: none; flex: 1 1 auto; min-width: 0; cursor: pointer; text-align: left;
+        background: none; border: none; color: #e7e9ee; font: inherit; font-size: 12px; padding: 8px 8px;
+        white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      }
+      .chat-hist-item.active .chat-hist-open { font-weight: 600; }
+      .chat-hist-del {
+        appearance: none; flex: none; cursor: pointer; background: none; border: none; border-radius: 6px;
+        color: rgba(231,233,238,.45); width: 24px; height: 24px; display: inline-flex; align-items: center; justify-content: center;
+      }
+      .chat-hist-del:hover { background: rgba(255,80,80,.16); color: #ff8a8a; }
+      .chat-hist-del svg { width: 13px; height: 13px; }
       .chat-stream { flex: 1 1 0; min-height: 0; overflow-y: auto; padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; }
       .chat-empty { opacity: .5; text-align: center; padding: 48px 16px; font-size: 13px; line-height: 1.6; }
       .chat-composer { flex: none; position: relative; border-top: 1px solid rgba(255,255,255,.08); padding: 12px; }
@@ -977,6 +1017,20 @@ export function mount() {
         <div class="drawer-list"></div>
         <div class="drawer-stream"></div>
         <div class="chat-pane">
+          <div class="chat-head">
+            <span class="chat-title untitled" title="">New chat</span>
+            <div class="chat-head-actions">
+              <button class="chat-icon-btn" data-act="chat-new" title="Start a new chat" aria-label="Start a new chat">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
+              </button>
+              <div class="chat-hist-wrap">
+                <button class="chat-icon-btn chat-hist-btn" data-act="chat-history-toggle" title="Previous chats" aria-label="Previous chats" aria-expanded="false">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v5h5"/><path d="M3.05 13A9 9 0 1 0 6 5.3L3 8"/><path d="M12 7v5l4 2"/></svg>
+                </button>
+                <div class="chat-hist-menu"></div>
+              </div>
+            </div>
+          </div>
           <div class="chat-stream"></div>
           <div class="chat-composer">
             <span class="cstatus"><span class="cstat-logo">${AGENT_ICON}</span><span class="cstat-text"></span></span>
@@ -1108,6 +1162,16 @@ export function mount() {
   const chatApplyBtn = $('.chat-composer [data-act="chat-apply"]');
   const chatPickBtn = $('.chat-composer [data-act="chat-pick"]');
   const chatChips = $('.chat-composer .chat-chips');
+  const chatTitle = $('.chat-head .chat-title');
+  // Chat history — "New chat" + a dropdown listing previous conversations.
+  const chatHistWrap = $('.chat-head .chat-hist-wrap');
+  const chatHistBtn = $('.chat-head [data-act="chat-history-toggle"]');
+  const chatHistMenu = $('.chat-head .chat-hist-menu');
+  const closeChatHistory = () => {
+    chatHistMenu.classList.remove('open');
+    chatHistBtn.classList.remove('open');
+    chatHistBtn.setAttribute('aria-expanded', 'false');
+  };
   // "+" add menu (holds Attach element + Apply changes) and its trigger.
   const addWrap = $('.chat-composer .add-pick');
   const addMenu = $('.chat-composer .add-menu');
@@ -2053,8 +2117,64 @@ export function mount() {
       }
       pendingResolveIds = [];
     }
+    renderChatHead(); // a first message gives the thread a fallback title now
+    // Once a turn lands cleanly, name the thread from its context (once) — the
+    // agent-generated title then replaces the first-message fallback.
+    if (!agentErrored && !chat.hasTitle() && chat.entries().some((e) => e.k === 'you')) requestTitle();
     chatStateUpdate();
     updateCommentsActions();
+  };
+  // Ask the agent for a short title for the current thread. A self-contained
+  // one-shot (no resume) that feeds the transcript as context, so it never
+  // touches the live session or collides with a follow-up turn. Runs in the
+  // background — failure just leaves the first-message fallback in place.
+  let titleRunning = false;
+  const cleanTitle = (s) => {
+    let t = String(s || '').trim().split('\n')[0].trim();
+    t = t.replace(/^["'`*\s]+|["'`*\s]+$/g, '').replace(/[.,;:!?]+$/, '').replace(/\s+/g, ' ').trim();
+    return t.length > 48 ? t.slice(0, 48) + '…' : t;
+  };
+  const requestTitle = () => {
+    if (titleRunning || !selectedAgent) return;
+    const cid = chat.currentId();
+    const convo = chat
+      .entries()
+      .filter((e) => (e.k === 'you' || e.k === 'text') && e.text)
+      .map((e) => (e.k === 'you' ? 'User: ' : 'Assistant: ') + e.text)
+      .join('\n')
+      .slice(0, 4000);
+    if (!convo) return;
+    titleRunning = true;
+    let buf = '';
+    const finishTitle = () => {
+      if (!titleRunning) return;
+      titleRunning = false;
+      const title = cleanTitle(buf);
+      if (!title) return;
+      chat.setTitle(cid, title);
+      if (chat.currentId() === cid) renderChatHead(); // still the open thread
+      renderChatHistory();
+    };
+    streamAgentRun(
+      {
+        agent: selectedAgent,
+        model: selectedModel,
+        markdown:
+          'Reply with ONLY a short title (3–6 words, no quotes, no trailing punctuation) ' +
+          'that summarizes the conversation below. Output just the title text — nothing else.\n\n' +
+          convo,
+        resume: null,
+        mode: 'discuss',
+      },
+      {
+        onAction: (a) => { if (a.kind === 'text') buf = a.delta ? buf + a.text : a.text; },
+        onBridgeError: () => {},
+        onBridgeEnd: finishTitle,
+        onStreamEnd: finishTitle,
+        onError: () => { titleRunning = false; },
+      },
+      bridgeFetch,
+    );
   };
   const runChat = () => {
     const text = chatText.value.trim();
@@ -2162,6 +2282,46 @@ export function mount() {
     es.forEach(renderChatEntry);
     closeTextRow();
     surface = null;
+  };
+
+  // Build the chat-history dropdown from the model's conversation summaries
+  // (most-recent-first). Each row opens that thread; the trash icon deletes it.
+  const renderChatHistory = () => {
+    const list = chat.chats();
+    if (!list.length) {
+      chatHistMenu.innerHTML = '<div class="chat-hist-empty">No chats yet.</div>';
+      return;
+    }
+    chatHistMenu.innerHTML = list
+      .map(
+        (c) =>
+          `<div class="chat-hist-item${c.active ? ' active' : ''}" data-chat="${c.id}">` +
+          `<button class="chat-hist-open" data-act="chat-open" title="${escHtml(c.title)}">${escHtml(c.title)}</button>` +
+          `<button class="chat-hist-del" data-act="chat-del" title="Delete chat" aria-label="Delete chat">` +
+          `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>` +
+          `</button></div>`,
+      )
+      .join('');
+  };
+  // Reflect the current conversation's title into the chat header. Muted while
+  // it's still the "New chat" placeholder.
+  const renderChatHead = () => {
+    const t = chat.title();
+    chatTitle.textContent = t;
+    chatTitle.title = t;
+    chatTitle.classList.toggle('untitled', t === 'New chat');
+  };
+  // Switch the open conversation: drop the half-composed draft (chips/input are
+  // per-turn, not per-chat), replay the target thread, and refresh the chrome.
+  const switchChat = () => {
+    if (agentRunning) return; // never swap threads mid-stream
+    chat.clearChips();
+    renderChatChips();
+    chatText.value = '';
+    restoreChat();
+    renderChatHead();
+    chatStateUpdate();
+    renderChatHistory();
   };
 
   const exportMarkdown = () => {
@@ -2569,6 +2729,39 @@ export function mount() {
       runChat();
       return;
     }
+    if (e.target.closest('[data-act="chat-new"]')) {
+      if (agentRunning) return; // can't start a thread while one is streaming
+      chat.newChat();
+      closeChatHistory();
+      switchChat();
+      chatText.focus();
+      return;
+    }
+    if (e.target.closest('[data-act="chat-history-toggle"]')) {
+      const open = !chatHistMenu.classList.contains('open');
+      if (open) renderChatHistory();
+      chatHistMenu.classList.toggle('open', open);
+      chatHistBtn.classList.toggle('open', open);
+      chatHistBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+      return;
+    }
+    const histDel = e.target.closest('[data-act="chat-del"]');
+    if (histDel) {
+      const id = histDel.closest('.chat-hist-item').dataset.chat;
+      const wasCurrent = id === chat.currentId();
+      chat.deleteChat(id);
+      if (wasCurrent) switchChat(); // open thread was removed — replay the fallback
+      else renderChatHistory();
+      return;
+    }
+    const histOpen = e.target.closest('[data-act="chat-open"]');
+    if (histOpen) {
+      if (agentRunning) return;
+      chat.selectChat(histOpen.closest('.chat-hist-item').dataset.chat);
+      closeChatHistory();
+      switchChat();
+      return;
+    }
     if (e.target.closest('[data-act="add-toggle"]')) {
       const open = !addMenu.classList.contains('open');
       closeAgentMenu(); // only one composer menu open at a time
@@ -2710,6 +2903,7 @@ export function mount() {
       if (pickers.some((p) => p.menu.classList.contains('open'))) { closeAgentMenu(); return; }
       if (gearMenu.classList.contains('open')) { closeGearMenu(); return; }
       if (addMenu.classList.contains('open')) { closeAddMenu(); return; }
+      if (chatHistMenu.classList.contains('open')) { closeChatHistory(); return; }
       if (cpanel.classList.contains('open')) cpanel.classList.remove('open');
       else if (drawerOpen) closeDrawer();
       else if (note.style.display === 'block') closeNote();
@@ -2741,7 +2935,9 @@ export function mount() {
   refreshCount();
   renderBubbles();
   restoreChat(); // replay the persisted chat transcript (resumes via chat.sessionId())
+  renderChatHead();
   chatStateUpdate();
+  renderChatHistory();
 
   // ---- Agent + model picker ------------------------------------------------
   // Probe the bridge for installed coding-agent CLIs and their models, then build
@@ -2873,6 +3069,7 @@ export function mount() {
     // press lands outside the whole gear control (and not on its open submenu).
     if (gearMenu.classList.contains('open') && !e.composedPath().includes(gearWrap)) closeGearMenu();
     if (addMenu.classList.contains('open') && !e.composedPath().includes(addWrap)) closeAddMenu();
+    if (chatHistMenu.classList.contains('open') && !e.composedPath().includes(chatHistWrap)) closeChatHistory();
   }, true);
   bridgeFetch('/__pointcut/agents')
     .then((r) => (r.ok ? r.json() : { agents: [] }))
