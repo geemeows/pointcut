@@ -392,7 +392,6 @@ export function mount() {
       .composer-input { display: flex; align-items: flex-start; gap: 9px; }
       .composer-spark { flex: none; width: 18px; height: 18px; margin-top: 2px; color: var(--pc-accent); pointer-events: none; }
       .composer-spark svg { width: 100%; height: 100%; display: block; }
-      .composer-hint { font-size: 11px; color: rgba(231,233,238,.4); padding: 0 2px; user-select: none; }
       .composer-chips, .chat-chips { display: flex; flex-wrap: wrap; gap: 6px; }
       .composer-chips:empty, .chat-chips:empty { display: none; }
       .chip {
@@ -942,7 +941,6 @@ export function mount() {
                 <span class="composer-spark" aria-hidden="true">${SPARK_ICON}</span>
                 <textarea placeholder="Ask about this page…"></textarea>
               </div>
-              <div class="composer-hint">⌘/Ctrl+Enter to send</div>
               <div class="composer-bar">
                 <div class="add-pick">
                   <button class="add-trigger" data-act="add-toggle" title="Add context & options" aria-label="Add context & options" aria-expanded="false">
