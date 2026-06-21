@@ -16,6 +16,7 @@ import { createBridge as createBridgeImpl } from './bridge/bridge.mjs';
 // tokens, fetch), so they carry no DOM or bundler dependency. Tokens and
 // Provenance move here as-lifted; their design-system-agnostic rework is a
 // separate slice. Co-located `*.test.mjs` suites run under `node --test`.
+export * from './models/loc.mjs';
 export * from './models/queue.mjs';
 export * from './models/locator.mjs';
 export * from './models/tokens.mjs';
@@ -27,6 +28,9 @@ export * from './models/copy.mjs';
 export * from './models/chat.mjs';
 export * from './models/handoff.mjs';
 export * from './models/agent-run.mjs';
+export * from './models/markdown.mjs';
+export * from './models/slash-menu.mjs';
+export * from './models/pick-mode.mjs';
 
 // Agent Drivers + registry, lifted verbatim from the source toolbar (issue #3).
 // The Driver seam is the whole extensibility story: adding an agent is one

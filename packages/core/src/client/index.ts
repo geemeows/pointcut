@@ -31,6 +31,12 @@ import { createColorModel } from '../models/color.mjs';
 import { createTypographyModel } from '../models/typography.mjs';
 import { createCopyModel } from '../models/copy.mjs';
 import { createChat } from '../models/chat.mjs';
+// @ts-ignore — .mjs sibling, typed structurally.
+import { renderMarkdown } from '../models/markdown.mjs';
+// @ts-ignore — .mjs sibling, typed structurally.
+import * as slashMenu from '../models/slash-menu.mjs';
+// @ts-ignore — .mjs sibling, typed structurally.
+import { reducePickMode } from '../models/pick-mode.mjs';
 
 /** Replaced at build time by the unplugin `define`; '' means same-origin. */
 declare const __POINTCUT_BRIDGE__: string | undefined;
@@ -1862,68 +1868,8 @@ export function mount() {
   // it in. The client stays agent-agnostic — it only consumes Actions.
   const escHtml = (s) =>
     String(s).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
-  // Minimal, dependency-free markdown → HTML for assistant prose. Handles the
-  // subset agents actually emit (headings, bold/italic, inline + fenced code,
-  // bullet lists, paragraphs). Everything is HTML-escaped first, so agent output
-  // can never inject markup. Kept inline to stay clean-room / zero-dependency.
-  const renderMd = (src) => {
-    const blocks = [];
-    let text = String(src).replace(/\r\n/g, '\n');
-    // Pull fenced code out first so its body isn't markdown-processed. Match
-    // closed fences, then a dangling open fence (mid-stream) up to end of text.
-    text = text.replace(/```[^\n]*\n?([\s\S]*?)```/g, (_m, code) => {
-      blocks.push(code.replace(/\n+$/, ''));
-      return ` CB${blocks.length - 1} `;
-    });
-    text = text.replace(/```[^\n]*\n?([\s\S]*)$/, (_m, code) => {
-      blocks.push(code.replace(/\n+$/, ''));
-      return ` CB${blocks.length - 1} `;
-    });
-    const inline = (s) =>
-      escHtml(s)
-        .replace(/`([^`]+)`/g, (_m, c) => `<code>${c}</code>`)
-        .replace(/\*\*([^*]+?)\*\*/g, '<strong>$1</strong>')
-        .replace(/(^|[^*])\*([^*]+?)\*/g, '$1<em>$2</em>');
-    const out = [];
-    let para = [];
-    let list = [];
-    const flushPara = () => {
-      if (para.length) out.push(`<p>${para.map(inline).join('<br>')}</p>`);
-      para = [];
-    };
-    const flushList = () => {
-      if (list.length) out.push(`<ul>${list.map((li) => `<li>${inline(li)}</li>`).join('')}</ul>`);
-      list = [];
-    };
-    text.split('\n').forEach((raw) => {
-      const line = raw.replace(/\s+$/, '');
-      const cb = line.match(/^ CB(\d+) $/);
-      const h = line.match(/^(#{1,6})\s+(.*)$/);
-      const li = line.match(/^\s*[-*]\s+(.*)$/);
-      if (cb) {
-        flushPara();
-        flushList();
-        out.push(`<pre><code>${escHtml(blocks[+cb[1]])}</code></pre>`);
-      } else if (h) {
-        flushPara();
-        flushList();
-        const lvl = h[1].length;
-        out.push(`<h${lvl}>${inline(h[2])}</h${lvl}>`);
-      } else if (li) {
-        flushPara();
-        list.push(li[1]);
-      } else if (!line.trim()) {
-        flushPara();
-        flushList();
-      } else {
-        flushList();
-        para.push(line);
-      }
-    });
-    flushPara();
-    flushList();
-    return out.join('');
-  };
+  // Agent-output markdown → HTML lives in models/markdown.mjs (renderMarkdown).
+  // It HTML-escapes untrusted agent text first, so markup can never be injected.
   const relPath = (p) => String(p).split('/').slice(-2).join('/');
   const TOOL_ICONS = { Edit: '✎', MultiEdit: '✎', Write: '✎', Read: '→', Bash: '$', Grep: '⌕', Glob: '⌕' };
 
@@ -1952,9 +1898,9 @@ export function mount() {
     }
     if (isDelta) {
       openTextBuf += text;
-      openTextMsg.innerHTML = renderMd(openTextBuf);
+      openTextMsg.innerHTML = renderMarkdown(openTextBuf);
     } else {
-      openTextMsg.innerHTML = renderMd(text); // authoritative full text
+      openTextMsg.innerHTML = renderMarkdown(text); // authoritative full text
       closeTextRow();
     }
     box.scrollTop = box.scrollHeight;
@@ -2492,16 +2438,12 @@ export function mount() {
     tagLabel.textContent = labelFor(el);
   };
 
-  let dragStart = null;
-  let dragging = false;
-  let justDragged = false;
-
-  const marqueeRect = (a, b) => ({
-    left: Math.min(a.x, b.x),
-    top: Math.min(a.y, b.y),
-    width: Math.abs(a.x - b.x),
-    height: Math.abs(a.y - b.y),
-  });
+  // The press→drag→release→click gesture is a pure state machine in
+  // models/pick-mode.mjs (was/dragging/justDragged transitions + marquee
+  // geometry + click-vs-drag). The handlers below stay thin DOM glue: they
+  // translate real pointer events into the model's events, then apply the
+  // returned effect to the DOM.
+  let pickState = { dragStart: null, dragging: false, justDragged: false };
 
   const onMouseDown = (e) => {
     // Click-away closes an open popover — unless the press lands on the popover
@@ -2516,29 +2458,28 @@ export function mount() {
     // the note itself. A fresh pick opens its note on the later click event, so
     // this never eats the gesture that's opening one.
     if (note.style.display === 'block' && !e.composedPath().includes(note)) closeNote();
-    if (!picking || isOwn(e.composedPath()[0])) return;
-    dragStart = { x: e.clientX, y: e.clientY };
-    dragging = false;
+    pickState = reducePickMode(pickState, {
+      type: 'down', x: e.clientX, y: e.clientY, picking, onOwn: isOwn(e.composedPath()[0]),
+    }).state;
   };
 
   const onMove = (e) => {
-    if (!picking) return;
-    if (dragStart) {
-      const cur = { x: e.clientX, y: e.clientY };
-      if (!dragging && Math.hypot(cur.x - dragStart.x, cur.y - dragStart.y) > DRAG_THRESHOLD) {
-        dragging = true;
-        hideOutline();
-      }
-      if (dragging) {
-        const r = marqueeRect(dragStart, cur);
-        marquee.style.display = 'block';
-        marquee.style.left = r.left + 'px';
-        marquee.style.top = r.top + 'px';
-        marquee.style.width = r.width + 'px';
-        marquee.style.height = r.height + 'px';
-        return;
-      }
+    const drewBefore = pickState.dragging;
+    const { state, effect } = reducePickMode(pickState, {
+      type: 'move', x: e.clientX, y: e.clientY, picking, threshold: DRAG_THRESHOLD,
+    });
+    pickState = state;
+    if (effect.kind === 'marquee') {
+      if (!drewBefore) hideOutline(); // first frame of a drag drops the hover outline
+      const r = effect.rect;
+      marquee.style.display = 'block';
+      marquee.style.left = r.left + 'px';
+      marquee.style.top = r.top + 'px';
+      marquee.style.width = r.width + 'px';
+      marquee.style.height = r.height + 'px';
+      return;
     }
+    if (effect.kind !== 'hover') return;
     const el = e.composedPath()[0];
     if (!el || !el.nodeType || isOwn(el)) {
       hideOutline();
@@ -2548,31 +2489,31 @@ export function mount() {
   };
 
   const onMouseUp = (e) => {
-    if (!picking || !dragStart) return;
-    if (dragging) {
-      const r = marqueeRect(dragStart, { x: e.clientX, y: e.clientY });
-      marquee.style.display = 'none';
-      justDragged = true;
-      // Region marquee only makes a comment; chat-pick attaches single elements.
-      if (pickMode === 'comment') {
-        const region = {
-          x: r.left + window.scrollX, y: r.top + window.scrollY, w: r.width, h: r.height,
-        };
-        openNote({ region }, { bottom: r.top + r.height, left: r.left }, null);
-      }
+    const wasDrag = pickState.dragging;
+    const { state, effect } = reducePickMode(pickState, {
+      type: 'up', x: e.clientX, y: e.clientY, picking, pickMode,
+    });
+    pickState = state;
+    if (wasDrag) marquee.style.display = 'none';
+    // Region marquee only makes a comment; chat-pick attaches single elements.
+    if (effect.kind === 'region') {
+      const r = effect.rect;
+      const region = {
+        x: r.left + window.scrollX, y: r.top + window.scrollY, w: r.width, h: r.height,
+      };
+      openNote({ region }, { bottom: r.top + r.height, left: r.left }, null);
     }
-    dragStart = null;
-    dragging = false;
   };
 
   const onClick = (e) => {
-    if (!picking) return;
-    if (justDragged) {
-      justDragged = false;
+    const { state, effect } = reducePickMode(pickState, { type: 'click', picking });
+    pickState = state;
+    if (effect.kind === 'suppress') {
       e.preventDefault();
       e.stopPropagation();
       return;
     }
+    if (effect.kind !== 'click') return;
     const target = e.composedPath()[0];
     if (isOwn(target)) return;
     e.preventDefault();
@@ -2826,20 +2767,13 @@ export function mount() {
   let skillShown = []; // currently filtered items
   let skillTokenStart = 0; // index of the '/' being completed, in the textarea
 
-  // The slash-token under the caret, if the caret is within the leading run of
-  // "/token" tokens. Returns { query, start } or null.
+  // The slash-token under the caret. DOM glue reads the caret + composer text;
+  // the parse/match decision lives in models/slash-menu.mjs.
   const slashContext = () => {
     const caret = chatText.selectionStart == null ? chatText.value.length : chatText.selectionStart;
-    const head = chatText.value.slice(0, caret);
-    const m = head.match(/^((?:\/[A-Za-z0-9][\w-]*\s+)*)\/([A-Za-z0-9][\w-]*)?$/);
-    return m ? { query: m[2] || '', start: m[1].length } : null;
+    return slashMenu.slashContext(chatText.value, caret);
   };
-  const filterSkills = (q) => {
-    const ql = q.toLowerCase();
-    return availableSkills
-      .filter((s) => s.name.toLowerCase().includes(ql))
-      .sort((a, b) => Number(b.name.toLowerCase().startsWith(ql)) - Number(a.name.toLowerCase().startsWith(ql)));
-  };
+  const filterSkills = (q) => slashMenu.filterSkills(availableSkills, q);
   // Bold the matched span in a name.
   const markName = (name, q) => {
     const i = q ? name.toLowerCase().indexOf(q.toLowerCase()) : -1;
@@ -2862,7 +2796,7 @@ export function mount() {
     if (!ctx) return closeSkillMenu();
     skillTokenStart = ctx.start;
     skillShown = filterSkills(ctx.query);
-    if (skillActive >= skillShown.length) skillActive = 0;
+    skillActive = slashMenu.clampActive(skillActive, skillShown.length);
     if (!availableSkills.length) {
       chatSkillMenu.innerHTML = '<div class="skill-menu-empty">No project skills found</div>';
     } else if (!skillShown.length) {
@@ -2885,11 +2819,9 @@ export function mount() {
   const pickSkill = (item) => {
     if (!item) return;
     const caret = chatText.selectionStart == null ? chatText.value.length : chatText.selectionStart;
-    const v = chatText.value;
-    const insert = '/' + item.name + ' ';
-    chatText.value = v.slice(0, skillTokenStart) + insert + v.slice(caret);
-    const pos = skillTokenStart + insert.length;
-    chatText.setSelectionRange(pos, pos);
+    const next = slashMenu.applyPick(chatText.value, caret, skillTokenStart, item.name);
+    chatText.value = next.value;
+    chatText.setSelectionRange(next.caret, next.caret);
     closeSkillMenu();
     chatText.focus();
     chatStateUpdate();
@@ -2913,8 +2845,8 @@ export function mount() {
     if (skillMenuOpen) {
       if (e.key === 'Escape') { e.preventDefault(); closeSkillMenu(); return; }
       if (skillShown.length) {
-        if (e.key === 'ArrowDown') { e.preventDefault(); skillActive = (skillActive + 1) % skillShown.length; refreshSkillActive(); return; }
-        if (e.key === 'ArrowUp') { e.preventDefault(); skillActive = (skillActive - 1 + skillShown.length) % skillShown.length; refreshSkillActive(); return; }
+        if (e.key === 'ArrowDown') { e.preventDefault(); skillActive = slashMenu.moveSelection(skillActive, skillShown.length, 1); refreshSkillActive(); return; }
+        if (e.key === 'ArrowUp') { e.preventDefault(); skillActive = slashMenu.moveSelection(skillActive, skillShown.length, -1); refreshSkillActive(); return; }
         if (e.key === 'Enter' || (e.key === 'Tab' && !e.shiftKey)) { e.preventDefault(); pickSkill(skillShown[skillActive]); return; }
       }
     }
