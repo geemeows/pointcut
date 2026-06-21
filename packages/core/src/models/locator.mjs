@@ -1,14 +1,20 @@
 /* eslint-disable */
-// Design Toolbar — Locator (see ../design-toolbar-plugin.js).
+// Pointcut — Locator.
 //
 // Re-finds the live DOM element for an Annotation, surviving reloads. The
-// Source Stamp (data-luciq-loc) alone isn't unique — a v-for or a re-used
+// Source Stamp (data-pointcut-loc) alone isn't unique — a v-for or a re-used
 // component shares one loc — so the primary key is a structural child-index
 // path replayed from <body> down; the loc is only a fallback. Resolved elements
 // are cached (the cache is dropped on reload). This is the most bug-prone piece
 // of the toolbar, so it lives behind a small interface with `doc`/`win`
 // injected — feed it a fake document/window to unit-test the resolution rules.
-export const createLocator = ({ doc, win, locAttr }) => {
+//
+// The attribute name is the Source Stamp wire-format contract (./loc.mjs) — the
+// single home shared with the stampers that WRITE it. Callers may still inject
+// `locAttr` (the client does) to override; it defaults to the contract.
+import { LOC_ATTR } from './loc.mjs';
+
+export const createLocator = ({ doc, win, locAttr = LOC_ATTR }) => {
   const refs = new Map(); // annotation id -> live element
 
   // child indices from <body> down to the element.

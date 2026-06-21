@@ -7,17 +7,22 @@
 // every opening element tag inside a .vue <template> block, so a clicked DOM
 // node resolves back to its exact spot in source at pick time.
 //
+// Vue markup is HTML-grammar, so the scan + magic-string engine, idempotency,
+// and sourcemap live in the shared ./html-grammar module; this file supplies
+// only the two Vue-specific rules: scan the inside of the <template> block, and
+// skip the SFC's own <template> wrapper.
+//
 // MUST run before the Vue compiler turns the template into render code, so the
 // owning unplugin sets `enforce: 'pre'` and we operate on raw .vue source — the
 // line:col we compute then matches the real file. A stamp on a component usage
 // (<MyButton>) marks the *usage* site, not the child's internals (intentional —
 // that's the spot to edit).
-import path from 'node:path';
-import MagicString from 'magic-string';
 import type { Stamper } from '../index';
+import { createHtmlGrammarStamper, type ScanRegion } from './html-grammar';
 
-/** The neutral Source Stamp attribute. Mirrored by the client's Locator. */
-export const LOC_ATTR = 'data-pointcut-loc';
+// Re-export the contract attribute name so test/consumer imports of LOC_ATTR
+// from this module keep working; the single source of truth lives in core.
+export { LOC_ATTR } from '@pointcut/core';
 
 // Match a single opening tag, tolerating attribute values that contain '>'
 // by consuming quoted strings whole. Captures: 1=tag name, 2=attrs, 3=self-close.
@@ -26,69 +31,34 @@ const OPEN_TAG = /<([a-zA-Z][\w.-]*)((?:[^>"']|"[^"]*"|'[^']*')*?)(\/?)>/g;
 // Locate the first <template ...> ... </template> (top-level SFC block).
 const TEMPLATE_BLOCK = /<template(?:\s[^>]*)?>([\s\S]*?)<\/template>/;
 
-// Already-stamped guard, used for idempotency on a single tag's attrs.
-const ALREADY_STAMPED = new RegExp(`\\b${LOC_ATTR}\\b`);
-
-function lineColAt(source: string, index: number): { line: number; col: number } {
-  let line = 1;
-  let lastNewline = -1;
-  for (let i = 0; i < index; i++) {
-    if (source.charCodeAt(i) === 10 /* \n */) {
-      line++;
-      lastNewline = i;
-    }
-  }
-  return { line, col: index - lastNewline };
+// The scan region is the <template> inner content, blanked everywhere else so
+// match indices still line up 1:1 with the original file. Returning null (no
+// <template>) short-circuits the engine to "nothing stamped".
+function templateRegion(code: string): ScanRegion | null {
+  const block = TEMPLATE_BLOCK.exec(code);
+  if (!block) return null;
+  const inner = block[1] ?? '';
+  const innerStart = block.index + block[0].indexOf(inner);
+  // Same-length scan string: only the template inner survives, rest is spaces.
+  const scan =
+    ' '.repeat(innerStart) + inner + ' '.repeat(code.length - innerStart - inner.length);
+  return { scan, offset: 0 };
 }
 
 /** Build the Vue Stamper. `root` is the project root locs are made relative to. */
 export function createVueStamper(root: string = process.cwd()): Stamper {
-  return {
+  return createHtmlGrammarStamper(
+    root,
     // Only app .vue source (strip any query); never node_modules.
-    test(id) {
+    (id) => {
       const file = id.split('?')[0] ?? id;
       return file.endsWith('.vue') && !file.includes('node_modules');
     },
-
-    transform(code, id) {
-      const file = id.split('?')[0] ?? id;
-      const block = TEMPLATE_BLOCK.exec(code);
-      if (!block) return null;
-
-      const inner = block[1] ?? '';
-      // Offset of the template's inner content within the whole file.
-      const innerStart = block.index + block[0].indexOf(inner);
-      const rel = path.relative(root, file);
-
-      const s = new MagicString(code);
-      let stamped = 0;
-
-      OPEN_TAG.lastIndex = 0;
-      let match: RegExpExecArray | null;
-      while ((match = OPEN_TAG.exec(inner)) !== null) {
-        const tag = match[1] ?? '';
-        const attrs = match[2] ?? '';
-        // Idempotency / skip the SFC's own <template> wrappers (no DOM output).
-        if (tag.toLowerCase() === 'template' || ALREADY_STAMPED.test(attrs)) {
-          continue;
-        }
-        // Absolute index of this tag's '<' within the whole file.
-        const tagStart = innerStart + match.index;
-        const { line, col } = lineColAt(code, tagStart);
-        const loc = `${rel}:${line}:${col}`;
-        // Insert the attribute right after the existing attrs, before the
-        // closing '/>' or '>' — magic-string tracks it in the emitted map.
-        const insertAt = tagStart + 1 + tag.length + attrs.length;
-        s.appendLeft(insertAt, ` ${LOC_ATTR}="${loc}"`);
-        stamped++;
-      }
-
-      if (!stamped) return null; // nothing stamped — leave the module untouched
-
-      return {
-        code: s.toString(),
-        map: s.generateMap({ source: id, includeContent: true, hires: true }),
-      };
+    {
+      openTag: OPEN_TAG,
+      region: templateRegion,
+      // Skip the SFC's own <template> wrappers (no DOM output).
+      skip: (tag) => tag.toLowerCase() === 'template',
     },
-  };
+  );
 }

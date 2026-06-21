@@ -18,6 +18,7 @@ import { parse } from '@babel/parser';
 import _traverse from '@babel/traverse';
 import _generate from '@babel/generator';
 import * as t from '@babel/types';
+import { LOC_ATTR, encodeLoc } from '@pointcut/core';
 import type { Stamper } from '../index';
 
 // @babel/traverse and /generator ship a CJS default that interop-wraps under
@@ -25,8 +26,10 @@ import type { Stamper } from '../index';
 const traverse = (_traverse as unknown as { default?: typeof _traverse }).default ?? _traverse;
 const generate = (_generate as unknown as { default?: typeof _generate }).default ?? _generate;
 
-/** The neutral Source Stamp attribute. Mirrored by the client's Locator. */
-export const LOC_ATTR = 'data-pointcut-loc';
+// The Source Stamp wire-format contract — attribute name + encoder — lives once
+// in @pointcut/core (./loc.mjs). Re-export LOC_ATTR so test/consumer imports of
+// it from this module keep working.
+export { LOC_ATTR } from '@pointcut/core';
 
 // A JSX tag is a host element iff its name is a plain lowercase identifier
 // (`div`, `button`, `my-widget`). Uppercase (`Foo`) is a component reference and
@@ -74,7 +77,7 @@ export function createJsxStamper(root: string = process.cwd()): Stamper {
           if (!node.loc) return;
           const line = node.loc.start.line;
           const col = node.loc.start.column + 1;
-          const loc = `${rel}:${line}:${col}`;
+          const loc = encodeLoc({ file: rel, line, col });
           node.attributes.push(
             t.jsxAttribute(t.jsxIdentifier(LOC_ATTR), t.stringLiteral(loc)),
           );
