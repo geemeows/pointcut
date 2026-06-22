@@ -5,7 +5,7 @@ import {
   describeChanges, parseIntent, designText, copyText, intentLabel, propertyLabel,
   INTENT_OPTIONS, propertiesForIntent, defaultPropertyForIntent, cssPropertyForId,
   valueKind, isValidDesignValue, isDesignChangeValid, toEditableDesign, toEditableCopy,
-  editsFromEditable,
+  editsFromEditable, designValuePool, reduceEditor,
 } from './changes.mjs';
 
 test('describeChanges with no edits reports no-change for both lanes', () => {
@@ -240,4 +240,255 @@ test('editsFromEditable persists a copy change and round-trips the placeholder',
 test('editsFromEditable emits nothing for cleared lanes', () => {
   assert.deepEqual(editsFromEditable({ status: 'no-change' }, { status: 'no-change' }), []);
   assert.deepEqual(editsFromEditable({ status: 'not-detected' }, null), []);
+});
+
+// ---- designValuePool (value vocabulary dispatch) -------------------------
+
+// A token introspection facade mirroring the client's `tokens` object. Each
+// scale entry is { name, value }.
+const fakeTokens = {
+  spacingScale: () => [{ name: '--space-sm', value: '8px' }, { name: '--space-lg', value: '24px' }],
+  colorRamp: () => [{ name: '--color-danger', value: '#EF4444' }],
+  fontSizeScale: () => [{ name: '--type-body', value: '16px' }],
+  fontWeightScale: () => [{ name: '--type-bold', value: '700' }],
+  fontLineHeightScale: () => [{ name: '--lh-tight', value: '1.2' }],
+};
+
+test('designValuePool: spacing reads spacingScale for names + token-first options', () => {
+  const { names, options } = designValuePool('padding', fakeTokens);
+  assert.deepEqual(names, ['--space-sm', '--space-lg']);
+  // Tokens first as "--name · value", then the length presets, then Custom….
+  assert.deepEqual(options.map((o) => o.value), [
+    '--space-sm · 8px', '--space-lg · 24px', '4px', '8px', '12px', '16px', '24px', '__custom__',
+  ]);
+  assert.equal(options[0].label, '--space-sm · 8px');
+  assert.equal(options.at(-1).label, 'Custom…');
+});
+
+test('designValuePool: margin and gap share the spacing scale', () => {
+  for (const p of ['margin', 'gap']) {
+    const { names } = designValuePool(p, fakeTokens);
+    assert.deepEqual(names, ['--space-sm', '--space-lg'], p);
+  }
+});
+
+test('designValuePool: color lanes read colorRamp', () => {
+  for (const p of ['fill', 'textColor', 'borderColor']) {
+    const { names, options } = designValuePool(p, fakeTokens);
+    assert.deepEqual(names, ['--color-danger'], p);
+    assert.deepEqual(options.map((o) => o.value), [
+      '--color-danger · #EF4444', '#EF4444', '#3B82F6', '#22C55E', '#111827', '#FFFFFF', '__custom__',
+    ], p);
+  }
+});
+
+test('designValuePool: fontSize / fontWeight / lineHeight read their own scales', () => {
+  assert.deepEqual(designValuePool('fontSize', fakeTokens).names, ['--type-body']);
+  assert.deepEqual(designValuePool('fontWeight', fakeTokens).names, ['--type-bold']);
+  assert.deepEqual(designValuePool('lineHeight', fakeTokens).names, ['--lh-tight']);
+  assert.deepEqual(designValuePool('fontWeight', fakeTokens).options.map((o) => o.value), [
+    '--type-bold · 700', '400', '500', '600', '700', '__custom__',
+  ]);
+  assert.deepEqual(designValuePool('lineHeight', fakeTokens).options.map((o) => o.value), [
+    '--lh-tight · 1.2', '1', '1.25', '1.5', '1.75', '__custom__',
+  ]);
+});
+
+test('designValuePool: no tokens → presets + Custom only, empty names', () => {
+  const empty = {
+    spacingScale: () => [], colorRamp: () => [], fontSizeScale: () => [],
+    fontWeightScale: () => [], fontLineHeightScale: () => [],
+  };
+  const { names, options } = designValuePool('padding', empty);
+  assert.deepEqual(names, []);
+  assert.deepEqual(options.map((o) => o.value), ['4px', '8px', '12px', '16px', '24px', '__custom__']);
+  // Missing tokens facade altogether is tolerated.
+  assert.deepEqual(designValuePool('padding').names, []);
+  assert.deepEqual(designValuePool('padding', undefined).options.map((o) => o.value), [
+    '4px', '8px', '12px', '16px', '24px', '__custom__',
+  ]);
+});
+
+test('designValuePool: unknown property yields only Custom…', () => {
+  assert.deepEqual(designValuePool('bogus', fakeTokens), {
+    names: [], options: [{ value: '__custom__', label: 'Custom…' }],
+  });
+});
+
+test('designValuePool: a duplicate token/preset value is de-duped', () => {
+  // '8px' is both a spacing token value and a length preset → one option.
+  const { options } = designValuePool('padding', fakeTokens);
+  const eightPx = options.filter((o) => o.value === '8px');
+  assert.equal(eightPx.length, 1);
+});
+
+// ---- reduceEditor (popDraft state machine) -------------------------------
+
+const seedDraft = (over = {}) => ({
+  note: 'hi',
+  design: { source: 'auto-detected', intent: null, property: null, value: null, status: 'no-change' },
+  copy: { source: 'auto-detected', oldText: null, newText: null, status: 'no-change' },
+  designOpen: false,
+  copyOpen: false,
+  designCustom: false,
+  detecting: false,
+  ...over,
+});
+
+test('reduceEditor: null draft is a no-op (repaint true, draft unchanged)', () => {
+  const { draft, repaint } = reduceEditor(null, { type: 'toggle-design' });
+  assert.equal(draft, null);
+  assert.equal(repaint, true);
+});
+
+test('reduceEditor: unknown event returns the draft untouched', () => {
+  const d = seedDraft();
+  const { draft } = reduceEditor(d, { type: 'nope' });
+  assert.deepEqual(draft, d);
+});
+
+test('reduceEditor: toggle-design on an unset lane seeds a manual default + opens', () => {
+  const { draft, repaint } = reduceEditor(seedDraft(), { type: 'toggle-design', tokens: fakeTokens });
+  assert.equal(repaint, true);
+  assert.equal(draft.designOpen, true);
+  assert.deepEqual(draft.design, {
+    source: 'manual', intent: 'spacing', property: 'padding',
+    value: '--space-sm · 8px', status: 'detected',
+  });
+  assert.equal(draft.designCustom, false);
+});
+
+test('reduceEditor: toggle-design default value falls back to a preset with no tokens', () => {
+  const { draft } = reduceEditor(seedDraft(), { type: 'toggle-design' });
+  assert.equal(draft.design.value, '4px');
+});
+
+test('reduceEditor: toggle-design on a detected lane just expands (no reseed)', () => {
+  const d = seedDraft({ design: { source: 'manual', intent: 'color', property: 'fill', value: 'Red', status: 'detected' } });
+  const { draft } = reduceEditor(d, { type: 'toggle-design', tokens: fakeTokens });
+  assert.equal(draft.designOpen, true);
+  assert.deepEqual(draft.design, d.design);
+});
+
+test('reduceEditor: toggle-design collapses an open lane', () => {
+  const { draft } = reduceEditor(seedDraft({ designOpen: true }), { type: 'toggle-design' });
+  assert.equal(draft.designOpen, false);
+});
+
+test('reduceEditor: toggle-copy on an unset lane seeds manual newText="" preserving oldText', () => {
+  const { draft } = reduceEditor(seedDraft({ copy: { source: 'auto-detected', oldText: 'Save', newText: null, status: 'no-change' } }), { type: 'toggle-copy' });
+  assert.equal(draft.copyOpen, true);
+  assert.deepEqual(draft.copy, { source: 'manual', oldText: 'Save', newText: '', status: 'detected' });
+});
+
+test('reduceEditor: toggle-copy on a detected lane just expands', () => {
+  const d = seedDraft({ copy: { source: 'manual', oldText: 'A', newText: 'B', status: 'detected' } });
+  const { draft } = reduceEditor(d, { type: 'toggle-copy' });
+  assert.equal(draft.copyOpen, true);
+  assert.deepEqual(draft.copy, d.copy);
+});
+
+test('reduceEditor: clear-design wipes to manual no-change and collapses', () => {
+  const d = seedDraft({ designOpen: true, designCustom: true, design: { source: 'manual', intent: 'spacing', property: 'gap', value: '8px', status: 'detected' } });
+  const { draft } = reduceEditor(d, { type: 'clear-design' });
+  assert.deepEqual(draft.design, { source: 'manual', intent: null, property: null, value: null, status: 'no-change' });
+  assert.equal(draft.designCustom, false);
+  assert.equal(draft.designOpen, false);
+});
+
+test('reduceEditor: clear-copy wipes to manual no-change, keeps oldText, collapses', () => {
+  const d = seedDraft({ copyOpen: true, copy: { source: 'manual', oldText: 'Orig', newText: 'New', status: 'detected' } });
+  const { draft } = reduceEditor(d, { type: 'clear-copy' });
+  assert.deepEqual(draft.copy, { source: 'manual', oldText: 'Orig', newText: null, status: 'no-change' });
+  assert.equal(draft.copyOpen, false);
+});
+
+test('reduceEditor: detect-design adopts parsed result, source back to auto-detected', () => {
+  const parsed = parseIntent('make this red');
+  const { draft } = reduceEditor(seedDraft({ design: { source: 'manual', intent: 'type', property: 'fontSize', value: '20px', status: 'detected' }, designCustom: true }), { type: 'detect-design', parsed });
+  assert.equal(draft.design.source, 'auto-detected');
+  assert.equal(draft.design.intent, 'color');
+  assert.equal(draft.design.property, 'fill');
+  assert.equal(draft.design.status, 'detected');
+  assert.equal(draft.designOpen, true); // detected → stays expanded
+  assert.equal(draft.designCustom, false);
+});
+
+test('reduceEditor: detect-design collapses when nothing detected', () => {
+  const parsed = parseIntent('looks bad'); // design not-detected
+  const { draft } = reduceEditor(seedDraft({ designOpen: true }), { type: 'detect-design', parsed });
+  assert.equal(draft.design.status, 'not-detected');
+  assert.equal(draft.designOpen, false);
+});
+
+test('reduceEditor: detect-copy adopts parsed copy and opens only when detected', () => {
+  const parsed = parseIntent('rename this to Save');
+  const { draft } = reduceEditor(seedDraft(), { type: 'detect-copy', parsed });
+  assert.equal(draft.copy.source, 'auto-detected');
+  assert.equal(draft.copy.newText, 'Save');
+  assert.equal(draft.copyOpen, true);
+
+  const none = reduceEditor(seedDraft({ copyOpen: true }), { type: 'detect-copy', parsed: parseIntent('looks bad') });
+  assert.equal(none.draft.copyOpen, false);
+});
+
+test('reduceEditor: field-change ed-intent resets property+value and flips source to manual', () => {
+  const d = seedDraft({ design: { source: 'auto-detected', intent: 'spacing', property: 'padding', value: '8px', status: 'detected' }, designCustom: true });
+  const { draft, repaint } = reduceEditor(d, { type: 'field-change', field: 'ed-intent', value: 'color', tokens: fakeTokens });
+  assert.equal(repaint, true);
+  assert.equal(draft.design.intent, 'color');
+  assert.equal(draft.design.property, 'fill'); // default for color
+  assert.equal(draft.design.value, '--color-danger · #EF4444'); // first option
+  assert.equal(draft.design.source, 'manual');
+  assert.equal(draft.design.status, 'detected');
+  assert.equal(draft.designCustom, false);
+});
+
+test('reduceEditor: field-change ed-property resets value, source manual', () => {
+  const d = seedDraft({ design: { source: 'auto-detected', intent: 'spacing', property: 'padding', value: '8px', status: 'detected' } });
+  const { draft } = reduceEditor(d, { type: 'field-change', field: 'ed-property', value: 'gap', tokens: fakeTokens });
+  assert.equal(draft.design.property, 'gap');
+  assert.equal(draft.design.value, '--space-sm · 8px');
+  assert.equal(draft.design.source, 'manual');
+});
+
+test('reduceEditor: field-change ed-value picks a concrete value', () => {
+  const d = seedDraft({ design: { source: 'auto-detected', intent: 'spacing', property: 'padding', value: '8px', status: 'detected' } });
+  const { draft } = reduceEditor(d, { type: 'field-change', field: 'ed-value', value: '12px' });
+  assert.equal(draft.design.value, '12px');
+  assert.equal(draft.design.source, 'manual');
+  assert.equal(draft.designCustom, false);
+});
+
+test('reduceEditor: field-change ed-value __custom__ clears value and arms custom', () => {
+  const d = seedDraft({ design: { source: 'auto-detected', intent: 'spacing', property: 'padding', value: '8px', status: 'detected' } });
+  const { draft } = reduceEditor(d, { type: 'field-change', field: 'ed-value', value: '__custom__' });
+  assert.equal(draft.design.value, '');
+  assert.equal(draft.designCustom, true);
+  assert.equal(draft.design.source, 'manual');
+});
+
+test('reduceEditor: field-input ed-value-custom updates value WITHOUT repaint (caret preserved)', () => {
+  const d = seedDraft({ designCustom: true, design: { source: 'auto-detected', intent: 'spacing', property: 'padding', value: '', status: 'detected' } });
+  const { draft, repaint } = reduceEditor(d, { type: 'field-input', field: 'ed-value-custom', value: '20p' });
+  assert.equal(repaint, false);
+  assert.equal(draft.design.value, '20p');
+  assert.equal(draft.design.source, 'manual');
+  assert.equal(draft.design.status, 'detected');
+});
+
+test('reduceEditor: field-input ed-copy-new updates newText WITHOUT repaint', () => {
+  const d = seedDraft({ copyOpen: true, copy: { source: 'auto-detected', oldText: 'Old', newText: '', status: 'detected' } });
+  const { draft, repaint } = reduceEditor(d, { type: 'field-input', field: 'ed-copy-new', value: 'Sav' });
+  assert.equal(repaint, false);
+  assert.equal(draft.copy.newText, 'Sav');
+  assert.equal(draft.copy.source, 'manual');
+  assert.equal(draft.copy.oldText, 'Old');
+});
+
+test('reduceEditor: does not mutate the input draft (returns a new object)', () => {
+  const d = seedDraft();
+  const before = JSON.parse(JSON.stringify(d));
+  reduceEditor(d, { type: 'toggle-design', tokens: fakeTokens });
+  assert.deepEqual(d, before);
 });

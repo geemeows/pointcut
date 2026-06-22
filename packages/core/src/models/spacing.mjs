@@ -15,6 +15,12 @@
 // flex/grid gap. Stepping is uniform (one number), which is the tracer scope.
 export const SPACING_PROPS = ['padding', 'margin', 'gap'];
 
+// Which computed shorthand side stands in for each spacing property when reading
+// the element's current value. The stepper is uniform (one number), so one side
+// is representative: padding/margin read the top side, gap reads rowGap. Keyed
+// by the camelCase computed-style property the client reads off getComputedStyle.
+export const SPACING_SIDE = { padding: 'paddingTop', margin: 'marginTop', gap: 'rowGap' };
+
 export const createSpacingModel = ({ tokens }) => {
   // Open a stepping session for one property, seeded at the nearest token to
   // the element's current px. Returns null when there are no spacing tokens.
