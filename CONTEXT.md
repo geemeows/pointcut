@@ -25,6 +25,10 @@ A normalized event in the uniform NDJSON stream the Bridge emits: `{t:'action',a
 **Annotation**:
 A single numbered pick — a DOM element or marqueed region captured with a type tag and a jump-to-source link. Annotations accumulate in the Queue/Session.
 
+**Run**:
+One agent invocation from the toolbar and its client-side lifecycle — send → stream → finish. Distinct from the **Action** (the individual normalized stream events a Run emits) and the **Bridge** (the server surface a Run is dispatched through). A Run owns the in-flight state (running / errored / start time, the open streamed-prose node, the run-scoped working + pending-resolve Annotation ids) and renders via injected callbacks; the stream transport itself stays pure.
+_Avoid_: job, task, request
+
 **Introspection**:
 How Pointcut stays design-system-agnostic. Tokens, style provenance, and component identity are **read from the installing project's live CSSOM and Source Stamps at runtime**, not configured per design system. The browser already holds the resolved cascade; Pointcut reverse-maps from it.
 _Avoid_: adapter, NDS, Spark (luciq-coupled design-system specifics — do not bake in)
