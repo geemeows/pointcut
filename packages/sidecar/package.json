@@ -1,6 +1,6 @@
 {
   "name": "@pointcut/sidecar",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Standalone Node server mounting the Pointcut Bridge for dev-server-less setups (a peer to auto-attach, not a fallback).",
   "type": "module",
   "license": "MIT",

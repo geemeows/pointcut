@@ -1,6 +1,6 @@
 {
   "name": "@pointcut/example-vue-vite",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "private": true,
   "type": "module",
   "description": "Vue + Vite tracer-bullet demo: pick a live element, jump to its source.",
