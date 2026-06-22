@@ -19,6 +19,22 @@
 // (Font-family is out of scope — only two families exist; D6.)
 export const TYPOGRAPHY_PROPS = ['font-size', 'font-weight', 'line-height'];
 
+// Read an element's current value for a typography facet as the number its scale
+// is keyed on (0006). Pure CSSOM transform: the client resolves the computed
+// style (getComputedStyle(el)) and passes the object in — `cs` exposes camelCase
+// `lineHeight`/`fontSize`/`fontWeight`. Computed line-height resolves to px, so
+// divide by font-size to recover the unitless ratio the --font-line-height-*
+// tokens use; 'normal' (no numeric line-height) yields NaN → the model seeds at
+// scale[0]. Returns a number (possibly NaN).
+export const readType = (cs, property) => {
+  if (property === 'line-height') {
+    const lh = parseFloat(cs.lineHeight);
+    const fs = parseFloat(cs.fontSize);
+    return Number.isFinite(lh) && fs ? lh / fs : NaN;
+  }
+  return parseFloat(cs[property === 'font-size' ? 'fontSize' : 'fontWeight']);
+};
+
 export const createTypographyModel = ({ tokens }) => {
   // Each facet maps to its scale, its snapper, and how the current value is
   // formatted into the edit's `before`: size is px, weight an integer, and

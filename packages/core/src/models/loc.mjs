@@ -55,3 +55,29 @@ export const decodeLoc = (str) => {
 
   return { file, line: Number(lineStr), col: Number(colStr) };
 };
+
+/**
+ * Turn a raw loc stamp into the compact Source-Stamp display label the client
+ * shows ("filename:line:col"), plus the `linkable` flag and the full title.
+ *
+ * Pure: numbers/strings in, plain object out — the client owns the DOM (writes
+ * `.src-name` textContent, the `title`, the `linkable` class, the dataset).
+ * This matches the original `fillSrc` logic exactly: the basename is the last
+ * '/'-segment of the leading path, and any trailing `:line:col` tail is kept
+ * verbatim; `linkable` is true only when a loc is present AND contains ':'.
+ *
+ * @param {string} [loc] the raw `file:line:col` stamp (may be empty/missing)
+ * @returns {{ label: string, title: string, linkable: boolean, loc: string }}
+ */
+export const srcLabel = (loc) => {
+  const linkable = !!loc && loc.includes(':');
+  let label;
+  if (loc) {
+    const [file, ...lc] = loc.split(':');
+    const name = file.split('/').pop();
+    label = lc.length ? `${name}:${lc.join(':')}` : name;
+  } else {
+    label = '(source unknown)';
+  }
+  return { label, title: loc || 'source unknown', linkable, loc: loc || '' };
+};

@@ -1,9 +1,9 @@
 /* eslint-disable */
 // Run: node --test vite/design-toolbar/
-import { test } from 'node:test';
+import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { createTokens } from './tokens.mjs';
-import { createTypographyModel, TYPOGRAPHY_PROPS } from './typography.mjs';
+import { createTypographyModel, TYPOGRAPHY_PROPS, readType } from './typography.mjs';
 
 // Reuse the real tokens enumerator against a fake :root declaration, so the
 // model is exercised through the same scale/snap surface client.js uses.
@@ -104,4 +104,22 @@ test('toEdit without a step keeps the off-scale flag (needs a human decision)', 
 test('begin returns null for an unknown property or an empty scale', () => {
   assert.equal(model().begin('font-family', 16), null);
   assert.equal(model({}).begin('font-size', 16), null);
+});
+
+describe('readType', () => {
+  test('font-size parses the computed px to a number', () => {
+    assert.equal(readType({ fontSize: '16px' }, 'font-size'), 16);
+  });
+  test('font-weight parses the computed weight to a number', () => {
+    assert.equal(readType({ fontWeight: '700' }, 'font-weight'), 700);
+  });
+  test('line-height resolves to the unitless ratio (px / font-size)', () => {
+    assert.equal(readType({ lineHeight: '24px', fontSize: '16px' }, 'line-height'), 1.5);
+  });
+  test('line-height "normal" (non-numeric) yields NaN', () => {
+    assert.ok(Number.isNaN(readType({ lineHeight: 'normal', fontSize: '16px' }, 'line-height')));
+  });
+  test('line-height with a zero font-size yields NaN', () => {
+    assert.ok(Number.isNaN(readType({ lineHeight: '24px', fontSize: '0px' }, 'line-height')));
+  });
 });

@@ -2,7 +2,7 @@
 // Run: node --import tsx --test
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { LOC_ATTR, encodeLoc, decodeLoc } from './loc.mjs';
+import { LOC_ATTR, encodeLoc, decodeLoc, srcLabel } from './loc.mjs';
 
 test('LOC_ATTR is the neutral attribute name (no luciq coupling)', () => {
   assert.equal(LOC_ATTR, 'data-pointcut-loc');
@@ -50,4 +50,38 @@ test('decodeLoc returns null for malformed strings', () => {
   assert.equal(decodeLoc(':5:7'), null); // empty file
   assert.equal(decodeLoc(null), null);
   assert.equal(decodeLoc(undefined), null);
+});
+
+test('srcLabel builds the compact filename:line:col label', () => {
+  assert.deepEqual(srcLabel('src/components/App.vue:12:3'), {
+    label: 'App.vue:12:3',
+    title: 'src/components/App.vue:12:3',
+    linkable: true,
+    loc: 'src/components/App.vue:12:3',
+  });
+});
+
+test('srcLabel handles a bare path with no line:col (basename, not linkable)', () => {
+  // No ':' → linkable false, label is just the basename.
+  assert.deepEqual(srcLabel('src/App.vue'), {
+    label: 'App.vue',
+    title: 'src/App.vue',
+    linkable: false,
+    loc: 'src/App.vue',
+  });
+});
+
+test('srcLabel falls back to "(source unknown)" for an empty/missing loc', () => {
+  assert.deepEqual(srcLabel(''), {
+    label: '(source unknown)',
+    title: 'source unknown',
+    linkable: false,
+    loc: '',
+  });
+  assert.deepEqual(srcLabel(undefined), {
+    label: '(source unknown)',
+    title: 'source unknown',
+    linkable: false,
+    loc: '',
+  });
 });

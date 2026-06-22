@@ -3,7 +3,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createTokens } from './tokens.mjs';
-import { createSpacingModel, SPACING_PROPS } from './spacing.mjs';
+import { createSpacingModel, SPACING_PROPS, SPACING_SIDE } from './spacing.mjs';
 
 // Reuse the real tokens enumerator against a fake :root declaration, so the
 // model is exercised through the same scale/snap surface client.js uses.
@@ -79,4 +79,8 @@ test('toEdit without a step keeps the off-scale flag (needs a human decision)', 
 
 test('begin returns null when there are no spacing tokens', () => {
   assert.equal(model({}).begin('padding', 10), null);
+});
+
+test('SPACING_SIDE maps each shorthand to its representative computed side', () => {
+  assert.deepEqual(SPACING_SIDE, { padding: 'paddingTop', margin: 'marginTop', gap: 'rowGap' });
 });
