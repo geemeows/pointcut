@@ -1408,6 +1408,7 @@ export function mount() {
   let openTextMsg = null; // the .msg node currently accumulating streamed prose deltas
   let openTextBuf = ''; // its accumulated text so far
   let sentIds = []; // ids dispatched in the current panel run — removed on success
+  let workingIds = []; // pins currently pulsing (the comments the agent is working on)
   let dismissTimer = null; // post-run timer: auto-closes the panel + re-expands the bar
   let selectedIds = []; // comments checked in the Comments tab (default none); drives the action bar
   let pendingResolveIds = []; // comments handed to Chat via "Send to agent" — deleted on success
@@ -1537,7 +1538,7 @@ export function mount() {
       b.className = 'bubble';
       // Keep the pulse if this pin is mid-run (a re-render during the agent turn
       // would otherwise drop it).
-      if (agentRunning && sentIds.includes(a.id)) b.classList.add('thinking');
+      if (agentRunning && workingIds.includes(a.id)) b.classList.add('thinking');
       b.dataset.id = a.id;
       b.textContent = String(i + 1);
       b.title = a.comment;
@@ -2218,11 +2219,14 @@ export function mount() {
     }
   };
 
-  // Pulse (or stop pulsing) the on-page pins for the comments in the current
-  // run, so each annotated spot flashes while the agent works on it.
-  const markThinkingBubbles = (on) => {
+  // Pulse the on-page pins for the comments in the current run, so each
+  // annotated spot flashes while the agent works on it — whether the run goes
+  // to the floating panel (sentIds) or the Chat drawer (pendingResolveIds).
+  // `ids` arms the pulse; passing none stops it.
+  const markThinkingBubbles = (ids) => {
+    workingIds = ids || [];
     bubblesWrap.querySelectorAll('.bubble').forEach((b) => {
-      b.classList.toggle('thinking', on && sentIds.includes(b.dataset.id));
+      b.classList.toggle('thinking', workingIds.includes(b.dataset.id));
     });
   };
 
@@ -2246,7 +2250,7 @@ export function mount() {
       cLog('err', '⚠', escHtml(reason));
     }
     stopThinking(agentErrored);
-    markThinkingBubbles(false); // stop the pin pulse (surviving pins on error / not-yet-removed)
+    markThinkingBubbles(); // stop the pin pulse (surviving pins on error / not-yet-removed)
     updateCommentsActions();
     // The comments run is done: let the user read the result for a beat, then
     // clear the panel and restore the full toolbar. A new send (which cancels
@@ -2291,7 +2295,7 @@ export function mount() {
     agentStartAt = Date.now();
     startThinking();
     sentIds = anns.map((a) => a.id);
-    markThinkingBubbles(true); // flash the pins for the comments in this run
+    markThinkingBubbles(sentIds); // flash the pins for the comments in this run
 
     const parts = [];
     if (anns.length) parts.push(toMarkdownFor(anns));
@@ -2408,6 +2412,7 @@ export function mount() {
     closeTextRow();
     if (reason) { agentErrored = true; cLog('err', '⚠', escHtml(reason)); chat.record({ k: 'err', m: reason }); }
     stopThinking(agentErrored);
+    markThinkingBubbles(); // stop the pin pulse (resolved pins drop below; a failed run keeps them un-pulsed)
     // A successful comments→chat send resolves those comments: drop them from the
     // queue, clear the selection + note. A failed run keeps them for a retry.
     if (pendingResolveIds.length) {
@@ -2573,6 +2578,7 @@ export function mount() {
     agentStartAt = Date.now();
     startThinking();
     pendingResolveIds = anns.map((a) => a.id); // deleted once the run succeeds
+    markThinkingBubbles(pendingResolveIds); // flash the pins for the comments being resolved
 
     const parts = ['Please resolve the following comments by editing the source:', toMarkdownFor(anns)];
     if (noteText) parts.push('## How to apply\n' + noteText);
