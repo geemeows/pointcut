@@ -1,6 +1,6 @@
 {
   "name": "@pointcut/unplugin",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Universal transform/inject + dev-server auto-attach for Pointcut, across all bundlers via unplugin.",
   "type": "module",
   "license": "MIT",
