@@ -26,14 +26,15 @@ import { buildHandoff, contextChipsBlock } from '../models/handoff.mjs';
 import { streamAgentRun } from '../models/agent-run.mjs';
 import { createTokens } from '../models/tokens.mjs';
 import { createProvenance } from '../models/provenance.mjs';
-import { createSpacingModel } from '../models/spacing.mjs';
+import { createSpacingModel, SPACING_SIDE } from '../models/spacing.mjs';
 import { createColorModel } from '../models/color.mjs';
-import { createTypographyModel } from '../models/typography.mjs';
+import { createTypographyModel, readType as readTypePure } from '../models/typography.mjs';
 import { createCopyModel } from '../models/copy.mjs';
 import {
   describeChanges, parseIntent, designText, copyText as copyChangeText,
   INTENT_OPTIONS, propertiesForIntent, defaultPropertyForIntent,
   isDesignChangeValid, toEditableDesign, toEditableCopy, editsFromEditable,
+  designValuePool, reduceEditor,
 } from '../models/changes.mjs';
 import { createChat } from '../models/chat.mjs';
 // @ts-ignore — .mjs sibling, typed structurally.
@@ -42,6 +43,21 @@ import { renderMarkdown } from '../models/markdown.mjs';
 import * as slashMenu from '../models/slash-menu.mjs';
 // @ts-ignore — .mjs sibling, typed structurally.
 import { reducePickMode } from '../models/pick-mode.mjs';
+// @ts-ignore — .mjs sibling, typed structurally.
+import {
+  placeBeside as placeBesidePure, isOwn as isOwnPure, labelFor,
+  keyStylesOf as keyStylesOfPure, clampBarPos, flipDeltas, rightAnchorPos, cpanelPos,
+} from '../models/geometry.mjs';
+// @ts-ignore — .mjs sibling, typed structurally.
+import { relTime as relTimePure, KBD as KBDPure, cleanTitle } from '../models/format.mjs';
+// @ts-ignore — .mjs sibling, typed structurally.
+import { srcLabel } from '../models/loc.mjs';
+// @ts-ignore — .mjs sibling, typed structurally.
+import { createPicker } from '../models/picker.mjs';
+// @ts-ignore — .mjs sibling, typed structurally.
+import { createControl } from '../models/control.mjs';
+// @ts-ignore — .mjs sibling, typed structurally.
+import { createAgentRun } from '../models/run.mjs';
 
 /** Replaced at build time by the unplugin `define`; '' means same-origin. */
 declare const __POINTCUT_BRIDGE__: string | undefined;
@@ -104,27 +120,52 @@ export function mount() {
   const colorModel = createColorModel({ tokens });
   const typographyModel = createTypographyModel({ tokens });
   const copyModel = createCopyModel();
-  // Which computed side stands in for each shorthand when reading the current
-  // value (the stepper is uniform, so one side is representative).
-  const SPACING_SIDE = { padding: 'paddingTop', margin: 'marginTop', gap: 'rowGap' };
-  // Read an element's current value for a typography facet as the number its
-  // scale is keyed on (0006). Computed line-height resolves to px, so divide by
-  // font-size to recover the unitless ratio the --font-line-height-* tokens use;
-  // 'normal' (no numeric line-height) yields NaN → the model seeds at scale[0].
-  const readType = (el, property) => {
-    const cs = getComputedStyle(el);
-    if (property === 'line-height') {
-      const lh = parseFloat(cs.lineHeight);
-      const fs = parseFloat(cs.fontSize);
-      return Number.isFinite(lh) && fs ? lh / fs : NaN;
-    }
-    return parseFloat(cs[property === 'font-size' ? 'fontSize' : 'fontWeight']);
+  // Agent + model selection (the only place an agent name surfaces): owns the
+  // "agent:model" codec + the catalog/selection. select() returns an intent; the
+  // client fires the effects (see applySelect).
+  const picker = createPicker();
+  // SPACING_SIDE (which computed shorthand side is representative) and readType
+  // (line-height → unitless-ratio CSSOM read) are token-keyed Introspection, so
+  // they live behind the spacing / typography models now (ADR-0001). The client
+  // only performs the DOM read and hands the resolved computed style in.
+  const readType = (el, property) => readTypePure(getComputedStyle(el), property);
+
+  // ---- Inspector controls (0004–0007) --------------------------------------
+  // The four note-box controls are one parameterised factory each owning its own
+  // active session (replacing the old spacing/color/type/copy closure `let`s).
+  // The model is DOM-free; the client supplies an `io` adapter for the real DOM
+  // touch and paints the render descriptors the controls return. `target` is a
+  // CSS property name (spacing/color/type) or the 'textContent' sentinel (copy).
+  const io = {
+    read: (el, target) => (target === 'textContent' ? el.textContent : getComputedStyle(el).getPropertyValue(target).trim()),
+    readInline: (el, target) => (target === 'textContent' ? el.textContent : el.style.getPropertyValue(target)),
+    write: (el, target, value) => { if (target === 'textContent') el.textContent = value; else el.style.setProperty(target, value); },
+    clear: (el, target) => { if (target !== 'textContent') el.style.removeProperty(target); },
+    provenance: (el, property) => provenance.inspect(el, property),
   };
+  const spacingControl = createControl({
+    model: spacingModel, previewTarget: null, captureAt: 'commit', renderStrategy: 'stepper',
+    beginSession: (_io, el, property) => spacingModel.begin(property, parseFloat(getComputedStyle(el)[SPACING_SIDE[property]]) || 0),
+  });
+  const colorControl = createControl({
+    model: colorModel, previewTarget: null, captureAt: 'select', renderStrategy: 'colorRamp',
+    beginSession: (_io, el, property, prov) => {
+      const before = prov.value || getComputedStyle(el).getPropertyValue(property).trim();
+      return colorModel.begin(property, before, colorModel.roleOf(prov.value));
+    },
+  });
+  const typeControl = createControl({
+    model: typographyModel, previewTarget: null, captureAt: 'commit', renderStrategy: 'stepper',
+    beginSession: (_io, el, property) => typographyModel.begin(property, readType(el, property)),
+  });
+  const copyControl = createControl({
+    model: copyModel, previewTarget: 'textContent', captureAt: 'none', renderStrategy: 'freeText', freeText: true,
+  });
 
   // Keyboard-shortcut labels: the Alt key is Option (⌥) on Mac. We match on
   // e.code (physical key) so Option+letter — which mutates e.key on Mac — still works.
   const IS_MAC = /Mac|iPhone|iPad|iPod/i.test(navigator.platform || navigator.userAgent || '');
-  const KBD = (k) => (IS_MAC ? '⌥' : 'Alt+') + k;
+  const KBD = (k) => KBDPure(k, IS_MAC);
 
   // Neutral agent mark (a four-point sparkle), filled with currentColor —
   // agent-agnostic, reused on the bar Send button and the drawer head.
@@ -1500,12 +1541,6 @@ export function mount() {
     chatHistBtn.setAttribute('aria-expanded', 'false');
   };
   let surface = null;
-  // The selected coding Agent + model (picker value) and the list the bridge says
-  // are installed (each { name, models:[{label,value}] }). selectedAgent gates
-  // Send; the picker is the only place an agent name shows.
-  let selectedAgent = null;
-  let selectedModel = '';
-  let availableAgents = [];
   // Skills/commands the chosen agent can invoke at the project root (the "/" menu).
   // Fetched per agent from the Bridge's skills-probe; cached client-side by agent.
   let availableSkills = [];
@@ -1556,8 +1591,9 @@ export function mount() {
   // What a pick does on click: 'comment' (open a note — the toolbar Pick) or
   // 'chat' (attach the element to the chat draft — the composer's Select button).
   let pickMode = 'comment';
-  let agentRunning = false;
-  let agentErrored = false;
+  // The agent Run lifecycle (running/errored/startAt, the streamed-prose node +
+  // buffer, the run-scoped working + pending-resolve ids) is owned by the
+  // agentRun orchestrator constructed below — no closure `let`s for it here.
   // Active drawer view ('chat' | 'comments'). Chat is home; the header's
   // comments bubble opens Comments, whose back arrow returns here.
   let activeTab = 'chat';
@@ -1565,32 +1601,12 @@ export function mount() {
     const t = localStorage.getItem(TAB_KEY);
     if (t === 'comments' || t === 'chat') activeTab = t;
   } catch (_) {}
-  let agentStartAt = 0; // run start timestamp, for the "Brewed for …" elapsed time
-  let openTextMsg = null; // the .msg node currently accumulating streamed prose deltas
-  let openTextBuf = ''; // its accumulated text so far
   let sentIds = []; // ids dispatched in the current panel run — removed on success
-  let workingIds = []; // pins currently pulsing (the comments the agent is working on)
   let dismissTimer = null; // post-run timer: auto-closes the panel + re-expands the bar
   let selectedIds = []; // comments checked in the Comments tab (default none); drives the action bar
-  let pendingResolveIds = []; // comments handed to Chat via "Send to agent" — deleted on success
   let pending = null; // what we're about to annotate: {el} | {region} | {editId}
-  // Active spacing-control session for the open note: the model session, the
-  // property, and the element's original inline value so a cancel restores it.
-  // null when no property is selected (no spacing edit will be attached).
-  let spacing = null;
-  // Active color-control session for the open note: model session, the CSS
-  // facet, the element, its original inline value (so cancel restores it), and
-  // the clean pre-preview provenance (so the role/source isn't read off our own
-  // inline preview). null when no facet is selected. (0005)
-  let color = null;
-  // Active typography-control session for the open note: the model session, the
-  // CSS facet, the element, and its original inline value so a cancel restores
-  // it. null when no facet is selected (no typography edit will be attached). (0006)
-  let type = null;
-  // Active copy / text-edit session for the open note: the model session, the
-  // element, and its original text so a cancel restores it. null when the pick
-  // isn't a text leaf, or after a reset. (0007)
-  let copy = null;
+  // The four inspector controls (spacing/color/type/copy) each own their active
+  // session now (constructed above) — no closure `let`s for them here.
   // Which intent (control group) is currently active — always one for an
   // element pick (null for regions/edits). Switching only toggles visibility,
   // so each intent keeps its last-selected property. Reset on each openNote.
@@ -1616,35 +1632,16 @@ export function mount() {
   // raw stamp (long relative path) wrapped over several lines — this keeps it
   // to one readable line and stays clickable for jump-to-source.
   const fillSrc = (srcEl, loc) => {
-    const nameEl = srcEl.querySelector('.src-name');
-    const linkable = !!loc && loc.includes(':');
-    if (loc) {
-      const [file, ...lc] = loc.split(':');
-      const name = file.split('/').pop();
-      nameEl.textContent = lc.length ? `${name}:${lc.join(':')}` : name;
-    } else {
-      nameEl.textContent = '(source unknown)';
-    }
-    srcEl.title = loc || 'source unknown';
+    const { label, title, linkable, loc: locStr } = srcLabel(loc);
+    srcEl.querySelector('.src-name').textContent = label;
+    srcEl.title = title;
     srcEl.classList.toggle('linkable', linkable);
-    srcEl.dataset.loc = loc || '';
+    srcEl.dataset.loc = locStr;
   };
 
   // Coarse relative timestamp for a comment ("just now", "21h ago"). Comments
   // predating the createdAt field (legacy records) show no time.
-  const relTime = (ts) => {
-    if (!ts) return '';
-    const s = Math.round((Date.now() - ts) / 1000);
-    if (s < 45) return 'just now';
-    const m = Math.round(s / 60);
-    if (m < 60) return `${m}m ago`;
-    const h = Math.round(m / 60);
-    if (h < 24) return `${h}h ago`;
-    const d = Math.round(h / 24);
-    if (d < 7) return `${d}d ago`;
-    const w = Math.round(d / 7);
-    return `${w}w ago`;
-  };
+  const relTime = (ts) => relTimePure(ts, Date.now());
 
   const refreshCount = () => {
     const n = Q.count();
@@ -1654,33 +1651,12 @@ export function mount() {
   };
 
   // ---- Geometry helpers ----------------------------------------------------
-  const isOwn = (node) => {
-    let n = node;
-    while (n) {
-      if (n === host) return true;
-      n = n.parentNode || (n.host || null);
-    }
-    return false;
-  };
+  // isOwn / labelFor / keyStylesOf and the placement + bar-drag math now live in
+  // the pure geometry model (numbers in, numbers out). The client keeps the DOM
+  // reads (host, getComputedStyle) and style writes; the math is the model's.
+  const isOwn = (node) => isOwnPure(node, host);
 
-  const labelFor = (el) => {
-    let s = el.tagName.toLowerCase();
-    if (el.id) s += '#' + el.id;
-    if (typeof el.className === 'string' && el.className.trim()) {
-      s += '.' + el.className.trim().split(/\s+/).slice(0, 2).join('.');
-    }
-    return s;
-  };
-
-  const keyStylesOf = (el) => {
-    const cs = getComputedStyle(el);
-    const out = {};
-    KEY_STYLES.forEach((p) => {
-      const v = cs.getPropertyValue(p);
-      if (v) out[p] = v.trim();
-    });
-    return out;
-  };
+  const keyStylesOf = (el) => keyStylesOfPure(getComputedStyle(el), KEY_STYLES);
 
   // ---- Comment bubbles -----------------------------------------------------
   let rafId = null;
@@ -1707,7 +1683,7 @@ export function mount() {
       b.className = 'bubble';
       // Keep the pulse if this pin is mid-run (a re-render during the agent turn
       // would otherwise drop it).
-      if (agentRunning && workingIds.includes(a.id)) b.classList.add('thinking');
+      if (agentRun.isRunning() && agentRun.workingIds().includes(a.id)) b.classList.add('thinking');
       b.dataset.id = a.id;
       b.textContent = String(i + 1);
       b.title = a.comment;
@@ -1729,40 +1705,19 @@ export function mount() {
   // whose bubble anchor sits at the element's top-right. Otherwise it extends
   // rightward from the anchor's left. Measures the card's real size, so callers
   // must make it visible first.
-  const GAP = 8;
-  const BOTTOM_RESERVE = 72; // main toolbar (bottom:20px) + breathing room
   // `lockSide` ('below'|'above'|'pinned') skips the vertical-side decision and
   // reuses a side chosen earlier. Callers that reposition every frame (the
   // popover, whose content animates open) latch the side once so a changing
   // height extends in one direction instead of re-flipping and jumping. Returns
-  // the side actually used so the caller can latch it.
+  // the side actually used so the caller can latch it. The side/clamp math is
+  // the pure geometry model; the client measures the panel + viewport and writes
+  // the returned top/left (the offsetWidth||296 / offsetHeight||160 fallbacks
+  // live here, since the model takes resolved numbers).
   const placeBeside = (panel, r, align, lockSide) => {
-    const w = panel.offsetWidth || 296;
-    const h = panel.offsetHeight || 160;
-
-    const belowTop = r.bottom + GAP;
-    const aboveTop = r.top - h - GAP;
-    let side = lockSide;
-    if (!side) {
-      if (belowTop + h <= window.innerHeight - BOTTOM_RESERVE) side = 'below';
-      else if (aboveTop >= GAP) side = 'above';
-      else side = 'pinned';
-    }
-    const top =
-      side === 'below' ? belowTop : side === 'above' ? aboveTop : window.innerHeight - h - BOTTOM_RESERVE;
-
-    // Preferred horizontal side; flip if it overflows the opposite edge.
-    let left = align === 'right' ? r.right - w : r.left;
-    if (align === 'right') {
-      if (left < GAP) left = r.left; // too tight on the left → extend rightward
-    } else if (left + w > window.innerWidth - GAP) {
-      left = r.right - w; // too tight on the right → extend leftward
-    }
-    // Final clamp so the card never spills past either viewport edge.
-    if (left + w > window.innerWidth - GAP) left = window.innerWidth - w - GAP;
-    if (left < GAP) left = GAP;
-
-    panel.style.top = Math.max(top, GAP) + 'px';
+    const size = { w: panel.offsetWidth || 296, h: panel.offsetHeight || 160 };
+    const vp = { w: window.innerWidth, h: window.innerHeight };
+    const { side, top, left } = placeBesidePure(size, r, vp, align, lockSide);
+    panel.style.top = top + 'px';
     panel.style.left = left + 'px';
     return side;
   };
@@ -1773,208 +1728,116 @@ export function mount() {
     placeBeside(panel, r);
   };
 
+  // ---- Inspector control glue (0004–0007) ----------------------------------
+  // Each wrapper keeps its old name + signature but delegates the session
+  // lifecycle to its control instance (which owns the active session and the
+  // preview/restore/commit). The client only paints the returned render
+  // descriptor and clears its own DOM. A select that returns { active:false } is
+  // either a re-click toggle-off (control now inactive → clear UI) or a model
+  // decline that left a prior session intact (still active → leave UI as-is).
+
   // ---- Spacing control (0004) ----------------------------------------------
   // Show the labelled token + px (and an off-scale badge) for the current step.
-  const renderSpacing = (c) => {
+  const paintSpacing = (r) => {
     spacingReadout.innerHTML =
-      `<span class="ctx-tok">${c.token}</span><span class="ctx-val">${c.value}</span>`;
-    spacingNum.textContent = c.value;
-    spacingWarn.textContent = c.offScale ? 'off-scale' : '';
-    spacingWarn.classList.toggle('warn', !!c.offScale);
+      `<span class="ctx-tok">${r.token}</span><span class="ctx-val">${r.value}</span>`;
+    spacingNum.textContent = r.value;
+    spacingWarn.textContent = r.offScale ? 'off-scale' : '';
+    spacingWarn.classList.toggle('warn', !!r.offScale);
   };
-
-  // Paint the throwaway inline preview (precedence beats scoped CSS, D7).
-  const previewSpacing = (c) => {
-    if (spacing && spacing.el) spacing.el.style.setProperty(spacing.property, c.value);
-  };
-
-  // Undo the preview, returning the element's inline style to what it was.
-  const restoreSpacing = () => {
-    if (!spacing || !spacing.el) return;
-    if (spacing.origInline) spacing.el.style.setProperty(spacing.property, spacing.origInline);
-    else spacing.el.style.removeProperty(spacing.property);
-  };
-
-  // Clear any active session and reset the control's UI to "no property chosen".
-  const resetSpacing = () => {
-    spacing = null;
+  const clearSpacingUI = () => {
     spacingStrip.hidden = true;
     spacingReadout.innerHTML = '';
     spacingNum.textContent = '';
     spacingWarn.textContent = '';
     spacingCtl.querySelectorAll('.sp-prop').forEach((b) => b.classList.remove('active'));
   };
-
-  // Begin (or switch to) a stepping session for one property on the picked
-  // element. Restores any prior property's preview first, seeds at the nearest
-  // token to the element's current value, and shows the stepper.
+  const restoreSpacing = () => spacingControl.restore();
+  const resetSpacing = () => { spacingControl.reset(); clearSpacingUI(); };
   const selectSpacingProp = (property) => {
     if (!pending || !pending.el) return;
-    // Re-clicking the active property clears it (no edit will be attached).
-    if (spacing && spacing.property === property) {
-      restoreSpacing();
-      resetSpacing();
-      return;
-    }
-    restoreSpacing();
-    const el = pending.el;
-    const px = parseFloat(getComputedStyle(el)[SPACING_SIDE[property]]) || 0;
-    const session = spacingModel.begin(property, px);
-    if (!session) return; // no spacing tokens on :root
-    spacing = { session, property, el, origInline: el.style.getPropertyValue(property) };
+    const r = spacingControl.select(pending.el, property, io);
+    if (!r.active) { if (!spacingControl.isActive()) clearSpacingUI(); return; }
     spacingCtl.querySelectorAll('.sp-prop').forEach((b) =>
       b.classList.toggle('active', b.dataset.prop === property),
     );
     spacingStrip.hidden = false;
-    renderSpacing(session.current());
+    paintSpacing(r.render);
   };
-
-  const stepSpacing = (dir) => {
-    if (!spacing) return;
-    const c = spacing.session.step(dir);
-    renderSpacing(c);
-    previewSpacing(c);
-  };
+  const stepSpacing = (dir) => { const r = spacingControl.step(dir); if (r) paintSpacing(r.render); };
 
   // ---- Color control (0005) ------------------------------------------------
-  // Show the semantic role that currently applies, or flag its absence (D4/D8).
-  const renderColorRole = (session) => {
-    if (session.role) {
+  // Paint the semantic role (D4/D8) + the L1 primitive ramp as clickable
+  // swatches, marking the active token. Color captures provenance at select-time
+  // (inside the control) so the role isn't read off our own inline preview.
+  const paintColor = (r) => {
+    if (r.role) {
       colorRole.className = 'cl-role';
-      colorRole.innerHTML = `Role: <span class="cl-rname">${session.role}</span>`;
+      colorRole.innerHTML = `Role: <span class="cl-rname">${r.role}</span>`;
     } else {
       colorRole.className = 'cl-role none';
       colorRole.textContent = '⚠ No semantic role — may need one';
     }
-  };
-
-  // Paint the L1 primitive ramp as clickable swatches.
-  const renderColorRamp = (session) => {
     colorRampEl.innerHTML = '';
-    session.swatches.forEach((s) => {
+    r.swatches.forEach((s) => {
       const b = document.createElement('button');
       b.className = 'cl-swatch';
       b.dataset.token = s.name;
       b.style.background = s.value;
       b.title = `${s.name} ${s.value}`;
+      if (r.active && s.name === r.active) b.classList.add('active');
       colorRampEl.appendChild(b);
     });
   };
-
-  // Undo the throwaway preview, restoring the element's inline style.
-  const restoreColor = () => {
-    if (!color || !color.el) return;
-    if (color.origInline) color.el.style.setProperty(color.property, color.origInline);
-    else color.el.style.removeProperty(color.property);
-  };
-
-  // Clear any active session and reset the control's UI to "no facet chosen".
-  const resetColor = () => {
-    color = null;
+  const clearColorUI = () => {
     colorPanel.hidden = true;
     colorRole.textContent = '';
     colorRampEl.innerHTML = '';
     colorCtl.querySelectorAll('.cl-prop').forEach((b) => b.classList.remove('active'));
   };
-
-  // Begin (or switch to) a color session for one facet on the picked element.
-  // Reads the genuine declared color and its semantic role *before* any preview,
-  // so the role isn't read off our own inline override (0002 checks inline
-  // first). The clean provenance is stashed for the commit.
+  const restoreColor = () => colorControl.restore();
+  const resetColor = () => { colorControl.reset(); clearColorUI(); };
   const selectColorProp = (property) => {
     if (!pending || !pending.el) return;
-    // Re-clicking the active facet clears it (no edit will be attached).
-    if (color && color.property === property) {
-      restoreColor();
-      resetColor();
-      return;
-    }
-    restoreColor();
-    const el = pending.el;
-    const prov = provenance.inspect(el, property);
-    const before = prov.value || getComputedStyle(el).getPropertyValue(property).trim();
-    const session = colorModel.begin(property, before, colorModel.roleOf(prov.value));
-    if (!session) return; // no primitive ramp on :root
-    color = { session, property, el, origInline: el.style.getPropertyValue(property), prov };
+    const r = colorControl.select(pending.el, property, io);
+    if (!r.active) { if (!colorControl.isActive()) clearColorUI(); return; }
     colorCtl.querySelectorAll('.cl-prop').forEach((b) =>
       b.classList.toggle('active', b.dataset.cprop === property),
     );
-    renderColorRole(session);
-    renderColorRamp(session);
+    paintColor(r.render);
     colorPanel.hidden = false;
   };
-
-  const pickColor = (token) => {
-    if (!color) return;
-    const c = color.session.pick(token);
-    if (!c) return;
-    color.el.style.setProperty(color.property, c.value); // throwaway preview
-    colorRampEl.querySelectorAll('.cl-swatch').forEach((b) =>
-      b.classList.toggle('active', b.dataset.token === token),
-    );
-  };
+  const pickColor = (token) => { const r = colorControl.pick(token); if (r) paintColor(r.render); };
 
   // ---- Typography control (0006) -------------------------------------------
   // Show the labelled token + value (and an off-scale badge) for the current step.
-  const renderType = (c) => {
+  const paintType = (r) => {
     typeReadout.innerHTML =
-      `<span class="ctx-tok">${c.token}</span><span class="ctx-val">${c.value}</span>`;
-    typeNum.textContent = c.value;
-    typeWarn.textContent = c.offScale ? 'off-scale' : '';
-    typeWarn.classList.toggle('warn', !!c.offScale);
+      `<span class="ctx-tok">${r.token}</span><span class="ctx-val">${r.value}</span>`;
+    typeNum.textContent = r.value;
+    typeWarn.textContent = r.offScale ? 'off-scale' : '';
+    typeWarn.classList.toggle('warn', !!r.offScale);
   };
-
-  // Paint the throwaway inline preview (precedence beats scoped CSS, D7).
-  const previewType = (c) => {
-    if (type && type.el) type.el.style.setProperty(type.property, c.value);
-  };
-
-  // Undo the preview, returning the element's inline style to what it was.
-  const restoreType = () => {
-    if (!type || !type.el) return;
-    if (type.origInline) type.el.style.setProperty(type.property, type.origInline);
-    else type.el.style.removeProperty(type.property);
-  };
-
-  // Clear any active session and reset the control's UI to "no facet chosen".
-  const resetType = () => {
-    type = null;
+  const clearTypeUI = () => {
     typeStrip.hidden = true;
     typeReadout.innerHTML = '';
     typeNum.textContent = '';
     typeWarn.textContent = '';
     typeCtl.querySelectorAll('.ty-prop').forEach((b) => b.classList.remove('active'));
   };
-
-  // Begin (or switch to) a stepping session for one typography facet on the
-  // picked element. Restores any prior facet's preview first, seeds at the
-  // nearest token to the element's current value, and shows the stepper.
+  const restoreType = () => typeControl.restore();
+  const resetType = () => { typeControl.reset(); clearTypeUI(); };
   const selectTypeProp = (property) => {
     if (!pending || !pending.el) return;
-    // Re-clicking the active facet clears it (no edit will be attached).
-    if (type && type.property === property) {
-      restoreType();
-      resetType();
-      return;
-    }
-    restoreType();
-    const el = pending.el;
-    const session = typographyModel.begin(property, readType(el, property));
-    if (!session) return; // no tokens of that kind on :root
-    type = { session, property, el, origInline: el.style.getPropertyValue(property) };
+    const r = typeControl.select(pending.el, property, io);
+    if (!r.active) { if (!typeControl.isActive()) clearTypeUI(); return; }
     typeCtl.querySelectorAll('.ty-prop').forEach((b) =>
       b.classList.toggle('active', b.dataset.tprop === property),
     );
     typeStrip.hidden = false;
-    renderType(session.current());
+    paintType(r.render);
   };
-
-  const stepType = (dir) => {
-    if (!type) return;
-    const c = type.session.step(dir);
-    renderType(c);
-    previewType(c);
-  };
+  const stepType = (dir) => { const r = typeControl.step(dir); if (r) paintType(r.render); };
 
   // ---- Copy / text control (0007) ------------------------------------------
   // Only offered on a text-leaf element — one with text and no element
@@ -1985,27 +1848,12 @@ export function mount() {
     !!el && el.children.length === 0 && el.textContent.trim().length > 0;
 
   // Open an edit session for the picked element, seeding the field with its
-  // current text. Editing the field live-previews onto the element (D7).
-  const armCopy = (el) => {
-    copy = { session: copyModel.begin(el.textContent), el, before: el.textContent };
-    copyText.value = copy.before;
-  };
-
-  // Paint the throwaway preview: the field's text replaces the element's.
-  const previewCopy = () => {
-    if (copy && copy.el) copy.el.textContent = copyText.value;
-  };
-
-  // Undo the preview, restoring the element's original text.
-  const restoreCopy = () => {
-    if (copy && copy.el) copy.el.textContent = copy.before;
-  };
-
-  // Clear the session and the field.
-  const resetCopy = () => {
-    copy = null;
-    copyText.value = '';
-  };
+  // current text. Editing the field live-previews onto the element (D7). The
+  // degenerate free-text control owns the session; the client owns the field.
+  const armCopy = (el) => { const r = copyControl.arm(el, io); copyText.value = r.value; };
+  const previewCopy = () => copyControl.preview(copyText.value);
+  const restoreCopy = () => copyControl.restore();
+  const resetCopy = () => { copyControl.reset(); copyText.value = ''; };
 
   // ---- Control group tabs --------------------------------------------------
   // The note box surfaces one change category at a time: clicking a tab opens
@@ -2016,10 +1864,10 @@ export function mount() {
   const CTL_BODIES = { spacing: spacingCtl, color: colorCtl, type: typeCtl, copy: copyCtl };
 
   const groupStaged = (g) =>
-    g === 'spacing' ? !!spacing
-      : g === 'color' ? !!color
-        : g === 'type' ? !!type
-          : !!(copy && copyText.value !== copy.before);
+    g === 'spacing' ? spacingControl.isActive()
+      : g === 'color' ? colorControl.isActive()
+        : g === 'type' ? typeControl.isActive()
+          : (copyControl.isActive() && copyText.value !== copyControl.session.before);
 
   const refreshCtlTabs = () => {
     ctlTabs.querySelectorAll('.ctl-tab').forEach((t) => {
@@ -2135,24 +1983,26 @@ export function mount() {
       // first) and pollute the captured snapshot. Color stashed its clean
       // pre-preview provenance at select time, so it reuses that (0005).
       const edits = [];
-      if (spacing) {
-        restoreSpacing();
-        edits.push(spacing.session.toEdit(provenance.inspect(el, spacing.property)));
+      // Each control restores its throwaway preview, then commits to an edit
+      // record (the 0003 contract). Spacing/type read provenance at commit-time;
+      // color reuses the clean provenance it stashed at select-time; copy reads
+      // the live edited text BEFORE restoring (attach only if the wording changed).
+      if (spacingControl.isActive()) {
+        spacingControl.restore();
+        edits.push(spacingControl.commit());
       }
-      if (color) {
-        restoreColor();
-        const colorEdit = color.session.toEdit(color.prov);
+      if (colorControl.isActive()) {
+        colorControl.restore();
+        const colorEdit = colorControl.commit();
         if (colorEdit) edits.push(colorEdit);
       }
-      if (type) {
-        restoreType();
-        edits.push(type.session.toEdit(provenance.inspect(el, type.property)));
+      if (typeControl.isActive()) {
+        typeControl.restore();
+        edits.push(typeControl.commit());
       }
-      if (copy) {
-        // Read the edited text before restoring the preview; attach only if the
-        // wording actually changed (toEdit returns null otherwise).
-        const copyEdit = copy.session.toEdit(copy.el.textContent);
-        restoreCopy();
+      if (copyControl.isActive()) {
+        const copyEdit = copyControl.commit(el.textContent);
+        copyControl.restore();
         if (copyEdit) edits.push(copyEdit);
       }
       if (edits.length) a.edits = edits;
@@ -2222,59 +2072,10 @@ export function mount() {
   // there's always a sensible choice even when a project ships no tokens. The
   // token names also gate validation: a token is only offered for the lane whose
   // pool it lives in, so an out-of-lane token can't be selected or saved.
-  const LENGTH_PRESETS = ['4px', '8px', '12px', '16px', '24px'];
-  const FONTSIZE_PRESETS = ['14px', '16px', '20px'];
-  const WEIGHT_PRESETS = ['400', '500', '600', '700'];
-  const LINEHEIGHT_PRESETS = ['1', '1.25', '1.5', '1.75'];
-  const COLOR_PRESETS = ['#EF4444', '#3B82F6', '#22C55E', '#111827', '#FFFFFF'];
-
-  // The introspected token names eligible for a property's value (used to gate
-  // validation). Empty when the project ships no tokens of that type.
-  const designPoolNames = (property) => {
-    const names = (list) => list.map((t) => t.name);
-    switch (property) {
-      case 'padding': case 'margin': case 'gap': return names(tokens.spacingScale());
-      case 'fill': case 'textColor': case 'borderColor': return tokens.colorRamp().map((t) => t.name);
-      case 'fontSize': return names(tokens.fontSizeScale());
-      case 'fontWeight': return names(tokens.fontWeightScale());
-      case 'lineHeight': return names(tokens.fontLineHeightScale());
-      default: return [];
-    }
-  };
-
-  // Selectable value options for a property: project tokens first (as
-  // "--name · value"), then literal presets, then a Custom… escape hatch.
-  const designValueOptions = (property) => {
-    const opts = [];
-    const seen = new Set();
-    const push = (value, label) => {
-      if (!value || seen.has(value)) return;
-      seen.add(value);
-      opts.push({ value, label: label || value });
-    };
-    const tokenOpts = (list) => list.forEach((t) => push(`${t.name} · ${t.value}`));
-    switch (property) {
-      case 'padding': case 'margin': case 'gap':
-        tokenOpts(tokens.spacingScale()); LENGTH_PRESETS.forEach((v) => push(v)); break;
-      case 'fontSize':
-        tokenOpts(tokens.fontSizeScale()); FONTSIZE_PRESETS.forEach((v) => push(v)); break;
-      case 'fill': case 'textColor': case 'borderColor':
-        tokens.colorRamp().forEach((t) => push(`${t.name} · ${t.value}`)); COLOR_PRESETS.forEach((v) => push(v)); break;
-      case 'fontWeight':
-        tokenOpts(tokens.fontWeightScale()); WEIGHT_PRESETS.forEach((v) => push(v)); break;
-      case 'lineHeight':
-        tokenOpts(tokens.fontLineHeightScale()); LINEHEIGHT_PRESETS.forEach((v) => push(v)); break;
-    }
-    opts.push({ value: '__custom__', label: 'Custom…' });
-    return opts;
-  };
-
-  // First non-custom option value for a property — the valid default used when a
-  // lane is added or its intent/property changes.
-  const defaultDesignValue = (property) => {
-    const o = designValueOptions(property).find((x) => x.value !== '__custom__');
-    return o ? o.value : '';
-  };
+  // The value vocabulary (token names for validation + selectable options, plus
+  // the literal presets and the property→token-scale dispatch) lives in the
+  // changes model now: designValuePool(property, tokens) → { names, options }.
+  // The reducer (reduceEditor) owns the default-value seeding internally.
 
   const isTokenValue = (v) => String(v || '').trim().slice(0, 2) === '--';
   const customPlaceholder = (property) => {
@@ -2342,7 +2143,7 @@ export function mount() {
     );
     wrap.append(controls);
 
-    const valOpts = designValueOptions(d.property);
+    const valOpts = designValuePool(d.property, tokens).options;
     const isCustom = popDraft.designCustom || !valOpts.some((o) => o.value === d.value);
     const valueRow = mk('div', 'sc-ed-valuerow');
     valueRow.append(mkSelect('ed-value', valOpts, isCustom ? '__custom__' : d.value));
@@ -2358,7 +2159,7 @@ export function mount() {
 
     const warn = mk('div', 'sc-ed-warn', 'Invalid value for selected intent');
     warn.dataset.role = 'design-warn';
-    if (isDesignChangeValid(d, designPoolNames(d.property))) warn.style.display = 'none';
+    if (isDesignChangeValid(d, designValuePool(d.property, tokens).names)) warn.style.display = 'none';
     wrap.append(warn);
 
     const actions = mk('div', 'sc-ed-actions');
@@ -2448,7 +2249,7 @@ export function mount() {
   const updateCardSave = () => {
     if (!popDraft) { popSave.disabled = !popNoteInput.value.trim(); return; }
     const noteOk = !!popNoteInput.value.trim();
-    const designOk = isDesignChangeValid(popDraft.design, designPoolNames(popDraft.design.property));
+    const designOk = isDesignChangeValid(popDraft.design, designValuePool(popDraft.design.property, tokens).names);
     popSave.disabled = !(noteOk && designOk);
   };
 
@@ -2588,125 +2389,42 @@ export function mount() {
 
   // ---- CHANGE EDITOR interactions -----------------------------------------
 
-  const toggleDesignEditor = () => {
+  // Every popDraft transition routes through the pure reduceEditor reducer (the
+  // source='manual' invariant + default-value seeding live there). The client
+  // dispatches an event, swaps in the returned draft, and repaints — except the
+  // caret-preserving field-input case (repaint:false), which refreshes only the
+  // warning + Save state so focus survives. `tokens` is threaded in for the
+  // transitions that need a fresh default value; detect-* carry the parsed note.
+  const dispatchEditor = (event) => {
     if (!popDraft) return;
-    if (popDraft.designOpen) {
-      popDraft.designOpen = false;
-    } else {
-      // "+ Add" (nothing set yet) seeds a valid default; the pencil just expands.
-      if (popDraft.design.status !== 'detected') {
-        popDraft.design = {
-          source: 'manual', intent: 'spacing', property: 'padding',
-          value: defaultDesignValue('padding'), status: 'detected',
-        };
-        popDraft.designCustom = false;
-      }
-      popDraft.designOpen = true;
-    }
-    rerenderEditor();
+    const { draft, repaint } = reduceEditor(popDraft, event);
+    popDraft = draft;
+    if (repaint) rerenderEditor();
+    return repaint;
   };
 
-  const toggleCopyEditor = () => {
-    if (!popDraft) return;
-    if (popDraft.copyOpen) {
-      popDraft.copyOpen = false;
-    } else {
-      if (popDraft.copy.status !== 'detected') {
-        popDraft.copy = { source: 'manual', oldText: popDraft.copy.oldText, newText: '', status: 'detected' };
-      }
-      popDraft.copyOpen = true;
-    }
-    rerenderEditor();
-  };
+  const toggleDesignEditor = () => dispatchEditor({ type: 'toggle-design', tokens });
+  const toggleCopyEditor = () => dispatchEditor({ type: 'toggle-copy' });
+  const clearDesignChange = () => dispatchEditor({ type: 'clear-design' });
+  const clearCopyChange = () => dispatchEditor({ type: 'clear-copy' });
+  const useDetectedDesign = () => dispatchEditor({ type: 'detect-design', parsed: parseIntent(popNoteInput.value) });
+  const useDetectedCopy = () => dispatchEditor({ type: 'detect-copy', parsed: parseIntent(popNoteInput.value) });
+  const onEditorFieldChange = (field, value) => dispatchEditor({ type: 'field-change', field, value, tokens });
 
-  const clearDesignChange = () => {
-    if (!popDraft) return;
-    popDraft.design = { source: 'manual', intent: null, property: null, value: null, status: 'no-change' };
-    popDraft.designCustom = false;
-    popDraft.designOpen = false;
-    rerenderEditor();
-  };
-
-  const clearCopyChange = () => {
-    if (!popDraft) return;
-    popDraft.copy = { source: 'manual', oldText: popDraft.copy.oldText, newText: null, status: 'no-change' };
-    popDraft.copyOpen = false;
-    rerenderEditor();
-  };
-
-  // Re-run detection from the current note text and adopt the result (source
-  // back to auto-detected). Stays expanded only when something was detected.
-  const useDetectedDesign = () => {
-    if (!popDraft) return;
-    const parsed = parseIntent(popNoteInput.value);
-    popDraft.design = toEditableDesign(parsed.designChange, 'auto-detected');
-    popDraft.designCustom = false;
-    popDraft.designOpen = popDraft.design.status === 'detected';
-    rerenderEditor();
-  };
-
-  const useDetectedCopy = () => {
-    if (!popDraft) return;
-    const parsed = parseIntent(popNoteInput.value);
-    popDraft.copy = toEditableCopy(parsed.copyChange, 'auto-detected');
-    popDraft.copyOpen = popDraft.copy.status === 'detected';
-    rerenderEditor();
-  };
-
-  // A select/intent/property/value change. Manual edits flip the lane's source
-  // so note-text detection no longer overwrites it.
-  const onEditorFieldChange = (field, value) => {
-    if (!popDraft) return;
-    const d = popDraft.design;
-    if (field === 'ed-intent') {
-      d.intent = value;
-      d.property = defaultPropertyForIntent(value);
-      d.value = defaultDesignValue(d.property);
-      d.source = 'manual';
-      d.status = 'detected';
-      popDraft.designCustom = false;
-      rerenderEditor();
-    } else if (field === 'ed-property') {
-      d.property = value;
-      d.value = defaultDesignValue(value);
-      d.source = 'manual';
-      d.status = 'detected';
-      popDraft.designCustom = false;
-      rerenderEditor();
-    } else if (field === 'ed-value') {
-      d.source = 'manual';
-      d.status = 'detected';
-      if (value === '__custom__') {
-        popDraft.designCustom = true;
-        d.value = '';
-      } else {
-        popDraft.designCustom = false;
-        d.value = value;
-      }
-      rerenderEditor();
-    }
-  };
-
-  // Text input (custom value / new copy) — update the draft without re-rendering
-  // so focus and caret survive; just refresh the warning + Save state.
+  // Text input (custom value / new copy): the reducer updates the draft with
+  // repaint:false; the client then refreshes only the warning + Save state so
+  // focus and caret survive.
   const onEditorFieldInput = (field, value) => {
     if (!popDraft) return;
+    dispatchEditor({ type: 'field-input', field, value });
     if (field === 'ed-value-custom') {
-      popDraft.design.source = 'manual';
-      popDraft.design.status = 'detected';
-      popDraft.design.value = value;
       const warn = popChanges.querySelector('[data-role="design-warn"]');
       if (warn) {
-        const ok = isDesignChangeValid(popDraft.design, designPoolNames(popDraft.design.property));
+        const ok = isDesignChangeValid(popDraft.design, designValuePool(popDraft.design.property, tokens).names);
         warn.style.display = ok ? 'none' : '';
       }
-      updateCardSave();
-    } else if (field === 'ed-copy-new') {
-      popDraft.copy.source = 'manual';
-      popDraft.copy.status = 'detected';
-      popDraft.copy.newText = value;
-      updateCardSave();
     }
+    updateCardSave();
   };
 
   // Clone a saved comment (including its captured edits) as a new queue entry
@@ -2784,28 +2502,11 @@ export function mount() {
   };
 
   // Stream assistant prose into ONE line: delta:true chunks accumulate, a complete
-  // block finalizes (authoritative full text) and closes the line. A line with no
-  // preceding deltas is just a one-shot row. Any non-text Action closes the line.
-  const closeTextRow = () => { openTextMsg = null; openTextBuf = ''; };
-  const streamText = (text, isDelta) => {
-    const box = (surface && surface.log) || stream;
-    if (!openTextMsg) {
-      const row = document.createElement('div');
-      row.className = 'evt text';
-      row.innerHTML = `<span class="msg"></span>`;
-      box.appendChild(row);
-      openTextMsg = row.querySelector('.msg');
-      openTextBuf = '';
-    }
-    if (isDelta) {
-      openTextBuf += text;
-      openTextMsg.innerHTML = renderMarkdown(openTextBuf);
-    } else {
-      openTextMsg.innerHTML = renderMarkdown(text); // authoritative full text
-      closeTextRow();
-    }
-    box.scrollTop = box.scrollHeight;
-  };
+  // block finalizes (authoritative full text) and closes the line. The buffer now
+  // lives in the agentRun orchestrator; these delegate so call sites stay put. The
+  // DOM ops (which row, where) are the onProse* deps passed to createAgentRun.
+  const closeTextRow = () => agentRun.closeText();
+  const streamText = (text, isDelta) => agentRun.streamText(text, isDelta);
   // Comments-tab top action bar: checking comments selects them; the bar appears
   // only once something is selected, and its count drives "Send to agent".
   const updateCommentsActions = () => {
@@ -2814,7 +2515,7 @@ export function mount() {
     drawerActions.classList.toggle('show', n > 0);
     if (!n) addNoteBox.classList.remove('open'); // nothing selected → no note input
     selInfo.textContent = `${n} selected`;
-    commentsSend.disabled = agentRunning || !selectedAgent || n === 0;
+    commentsSend.disabled = agentRun.isRunning() || !picker.getSelectedAgent() || n === 0;
   };
 
   // Drop the comments dispatched in the just-finished panel run (success only).
@@ -2859,7 +2560,7 @@ export function mount() {
   const stopThinking = (errored) => {
     bar.classList.remove('thinking');
     if (wordTimer) { clearInterval(wordTimer); wordTimer = null; }
-    const dur = fmtDuration(Date.now() - agentStartAt);
+    const dur = fmtDuration(Date.now() - agentRun.startedAt());
     setStatus(errored ? 'err' : 'done', errored ? `Failed after ${dur}` : `✻ Brewed for ${dur}`);
   };
 
@@ -2888,7 +2589,7 @@ export function mount() {
       renderToolRow(a);
     } else if (a.kind === 'result') {
       if (!a.ok) {
-        agentErrored = true;
+        agentRun.markErrored();
         if (a.errorText) cLog('err', '⚠', escHtml(a.errorText));
       } else {
         cLog('done', '✓', 'Changes applied — HMR should refresh the page.');
@@ -2900,13 +2601,45 @@ export function mount() {
   // Pulse the on-page pins for the comments in the current run, so each
   // annotated spot flashes while the agent works on it — whether the run goes
   // to the floating panel (sentIds) or the Chat drawer (pendingResolveIds).
-  // `ids` arms the pulse; passing none stops it.
+  // `ids` arms the pulse; passing none stops it. Stateless: the run-scoped
+  // working-id set lives in the orchestrator (agentRun.workingIds()); this only
+  // paints. The orchestrator drives it (run start arms, finish clears).
   const markThinkingBubbles = (ids) => {
-    workingIds = ids || [];
     bubblesWrap.querySelectorAll('.bubble').forEach((b) => {
-      b.classList.toggle('thinking', workingIds.includes(b.dataset.id));
+      b.classList.toggle('thinking', (ids || []).includes(b.dataset.id));
     });
   };
+
+  // ---- Agent Run orchestrator (CONTEXT.md: "Run") --------------------------
+  // Owns the run lifecycle (running/errored/startAt, the streamed-prose node +
+  // buffer, the run-scoped working/pending-resolve ids) above the pure
+  // agent-run.mjs transport. All DOM is injected: the prose rows land via these
+  // onProse* ops (the same box logic the old streamText used), pins pulse via
+  // markThinkingBubbles, and the spinner stops via stopThinking. Each call site
+  // prepares its surface, then hands a plan to run().
+  const proseBox = () => (surface && surface.log) || stream;
+  const onProseOpen = () => {
+    const box = proseBox();
+    const row = document.createElement('div');
+    row.className = 'evt text';
+    row.innerHTML = `<span class="msg"></span>`;
+    box.appendChild(row);
+    box.scrollTop = box.scrollHeight;
+    return row.querySelector('.msg');
+  };
+  const onProse = (node, buf) => { node.innerHTML = renderMarkdown(buf); const box = proseBox(); box.scrollTop = box.scrollHeight; };
+  const onProseFull = (node, text) => { node.innerHTML = renderMarkdown(text); const box = proseBox(); box.scrollTop = box.scrollHeight; };
+  const agentRun = createAgentRun({
+    transport: streamAgentRun,
+    fetchImpl: bridgeFetch,
+    request: (p) => ({ agent: picker.getSelectedAgent(), model: picker.getSelectedModel(), ...p }),
+    markThinking: markThinkingBubbles,
+    stopThinking,
+    now: () => Date.now(),
+    onProseOpen,
+    onProse,
+    onProseFull,
+  });
 
   // Tear down the post-run UI: hide the floating feed, re-expand the toolbar
   // from its brand circle, and disarm any element picker. Used by the auto-
@@ -2919,41 +2652,18 @@ export function mount() {
     if (picking) setPicking(false);
   };
 
-  const finishAgent = (reason) => {
-    if (!agentRunning) return;
-    agentRunning = false;
-    closeTextRow(); // stop accumulating into the last streamed line
-    if (reason) {
-      agentErrored = true;
-      cLog('err', '⚠', escHtml(reason));
-    }
-    stopThinking(agentErrored);
-    markThinkingBubbles(); // stop the pin pulse (surviving pins on error / not-yet-removed)
-    updateCommentsActions();
-    // The comments run is done: let the user read the result for a beat, then
-    // clear the panel and restore the full toolbar. A new send (which cancels
-    // this) or a clean reload after an applied edit pre-empts it. Errors stay
-    // up so the failure is readable.
-    cancelDismiss();
-    if (!agentErrored) {
-      cLog('ctx', '✕', 'This panel will close automatically in 3s…');
-      dismissTimer = setTimeout(dismissPanel, 3000);
-    }
-  };
-
   // Run a turn: dispatch the chosen comments (+ optional typed note) to the
   // bridge (agent-run.mjs) and stream the reply into the floating panel. Each
   // send is an independent one-shot (no resume) shown in a freshly wiped feed.
+  // The client preps the surface; the orchestrator owns the send→stream→finish
+  // lifecycle and calls the plan's beforeFinish/afterFinish at the right points.
   const runAgent = ({ annotations, note }) => {
-    if (agentRunning || !selectedAgent) return;
+    if (agentRun.isRunning() || !picker.getSelectedAgent()) return;
     const anns = annotations || [];
     const text = (note || '').trim();
     if (!anns.length && !text) return;
 
     cancelDismiss(); // a new send pre-empts a pending auto-dismiss
-    agentRunning = true;
-    agentErrored = false;
-    closeTextRow(); // fresh run — don't append onto a prior run's last line
     commentsSend.disabled = true;
     // Single-comment / whole-queue sends from the bar + bubbles stream into the
     // floating panel. (The Comments tab's "Send to agent" routes to Chat instead.)
@@ -2970,10 +2680,8 @@ export function mount() {
     if (!bar.classList.contains('collapsed')) collapseBar();
     cpanel.classList.add('open');
     positionCpanel();
-    agentStartAt = Date.now();
     startThinking();
     sentIds = anns.map((a) => a.id);
-    markThinkingBubbles(sentIds); // flash the pins for the comments in this run
 
     const parts = [];
     if (anns.length) parts.push(toMarkdownFor(anns));
@@ -2984,17 +2692,26 @@ export function mount() {
     const cn = anns.length ? `${anns.length} comment${anns.length > 1 ? 's' : ''}` : '';
     cLog('you', '›', escHtml([cn, text && `“${text}”`].filter(Boolean).join(' + ')));
 
-    streamAgentRun(
-      { agent: selectedAgent, model: selectedModel, markdown, resume: null },
-      {
-        onAction: renderAction,
-        onBridgeError: (m) => { agentErrored = true; cLog('err', '⚠', escHtml(m)); },
-        onBridgeEnd: () => finishAgent(null),
-        onStreamEnd: () => finishAgent(null),
-        onError: (m) => finishAgent(m),
+    agentRun.run({
+      payload: { markdown, resume: null },
+      workingIds: sentIds, // pulse the sent pins for this run
+      onAction: renderAction,
+      onBridgeError: (m) => { agentRun.markErrored(); cLog('err', '⚠', escHtml(m)); },
+      // renderAction's success branch already removeSent()s; on a failed run, just
+      // log the reason (the orchestrator already flipped errored).
+      beforeFinish: (reason) => { if (reason) cLog('err', '⚠', escHtml(reason)); },
+      afterFinish: (errored) => {
+        updateCommentsActions();
+        // Let the user read the result for a beat, then clear the panel + restore
+        // the toolbar. A new send (cancels this) or a clean reload pre-empts it.
+        // Errors stay up so the failure is readable.
+        cancelDismiss();
+        if (!errored) {
+          cLog('ctx', '✕', 'This panel will close automatically in 3s…');
+          dismissTimer = setTimeout(dismissPanel, 3000);
+        }
       },
-      bridgeFetch,
-    );
+    });
   };
 
   // ---- Chat tab (0010) -----------------------------------------------------
@@ -3006,7 +2723,7 @@ export function mount() {
   const chatStateUpdate = () => {
     const hasText = chatText.value.trim().length > 0;
     const hasChips = chat.chips().length > 0;
-    chatSend.disabled = agentRunning || !selectedAgent || (!hasText && !hasChips);
+    chatSend.disabled = agentRun.isRunning() || !picker.getSelectedAgent() || (!hasText && !hasChips);
     const apply = chat.mode() === 'apply';
     chatModeHint.classList.toggle('apply', apply);
     chatModeHint.classList.toggle('discuss', !apply);
@@ -3069,8 +2786,8 @@ export function mount() {
       return;
     }
     // A non-text Action closes the streamed line; persist delta-only prose that
-    // never got an authoritative final block (openTextMsg still open).
-    if (openTextMsg && openTextBuf) chat.record({ k: 'text', text: openTextBuf });
+    // never got an authoritative final block (the prose line is still open).
+    if (agentRun.openText() && agentRun.openBuf()) chat.record({ k: 'text', text: agentRun.openBuf() });
     closeTextRow();
     if (a.kind === 'session') {
       chat.setSession(a.id); // resume the same thread on the next turn
@@ -3079,38 +2796,23 @@ export function mount() {
       renderToolRow(e);
       chat.record(e);
     } else if (a.kind === 'result' && !a.ok) {
-      agentErrored = true;
+      agentRun.markErrored();
       if (a.errorText) { cLog('err', '⚠', escHtml(a.errorText)); chat.record({ k: 'err', m: a.errorText }); }
     }
   };
-  const finishChat = (reason) => {
-    if (!agentRunning) return;
-    agentRunning = false;
-    if (openTextMsg && openTextBuf) chat.record({ k: 'text', text: openTextBuf }); // trailing prose
-    closeTextRow();
-    if (reason) { agentErrored = true; cLog('err', '⚠', escHtml(reason)); chat.record({ k: 'err', m: reason }); }
-    stopThinking(agentErrored);
-    markThinkingBubbles(); // stop the pin pulse (resolved pins drop below; a failed run keeps them un-pulsed)
-    // A successful comments→chat send resolves those comments: drop them from the
-    // queue, clear the selection + note. A failed run keeps them for a retry.
-    if (pendingResolveIds.length) {
-      if (!agentErrored) {
-        const ids = new Set(pendingResolveIds);
-        Q.removeMany(ids);
-        ids.forEach((id) => locator.forget(id));
-        selectedIds = selectedIds.filter((id) => !ids.has(id));
-        addNoteText.value = '';
-        addNoteBox.classList.remove('open');
-        refreshCount();
-        renderBubbles();
-        closePopover();
-      }
-      pendingResolveIds = [];
-    }
+  // The chat-surface finish shared by runChat + sendCommentsToChat: flush any
+  // trailing prose (while the line is still open), log/record an error, then —
+  // after the orchestrator's stop/resolve — re-title and refresh. Passed as the
+  // beforeFinish/afterFinish of those plans.
+  const chatBeforeFinish = (reason) => {
+    if (agentRun.openText() && agentRun.openBuf()) chat.record({ k: 'text', text: agentRun.openBuf() });
+    if (reason) { cLog('err', '⚠', escHtml(reason)); chat.record({ k: 'err', m: reason }); }
+  };
+  const chatAfterFinish = () => {
     renderChatHead(); // a first message gives the thread a fallback title now
     // Once a turn lands cleanly, name the thread from its context (once) — the
     // agent-generated title then replaces the first-message fallback.
-    if (!agentErrored && !chat.hasTitle() && chat.entries().some((e) => e.k === 'you')) requestTitle();
+    if (!agentRun.isErrored() && !chat.hasTitle() && chat.entries().some((e) => e.k === 'you')) requestTitle();
     chatStateUpdate();
     updateCommentsActions();
   };
@@ -3119,13 +2821,8 @@ export function mount() {
   // touches the live session or collides with a follow-up turn. Runs in the
   // background — failure just leaves the first-message fallback in place.
   let titleRunning = false;
-  const cleanTitle = (s) => {
-    let t = String(s || '').trim().split('\n')[0].trim();
-    t = t.replace(/^["'`*\s]+|["'`*\s]+$/g, '').replace(/[.,;:!?]+$/, '').replace(/\s+/g, ' ').trim();
-    return t.length > 48 ? t.slice(0, 48) + '…' : t;
-  };
   const requestTitle = () => {
-    if (titleRunning || !selectedAgent) return;
+    if (titleRunning || !picker.getSelectedAgent()) return;
     const cid = chat.currentId();
     const convo = chat
       .entries()
@@ -3147,8 +2844,8 @@ export function mount() {
     };
     streamAgentRun(
       {
-        agent: selectedAgent,
-        model: selectedModel,
+        agent: picker.getSelectedAgent(),
+        model: picker.getSelectedModel(),
         markdown:
           'Reply with ONLY a short title (3–6 words, no quotes, no trailing punctuation) ' +
           'that summarizes the conversation below. Output just the title text — nothing else.\n\n' +
@@ -3187,17 +2884,12 @@ export function mount() {
   const runChat = () => {
     const text = chatText.value.trim();
     const chips = chat.chips();
-    if (agentRunning || !selectedAgent || (!text && !chips.length)) return;
-    pendingResolveIds = []; // a plain chat turn never resolves queued comments
-    agentRunning = true;
-    agentErrored = false;
-    closeTextRow();
+    if (agentRun.isRunning() || !picker.getSelectedAgent() || (!text && !chips.length)) return;
     commentsSend.disabled = true;
     chatSend.disabled = true;
     surface = { log: chatStream, status: chatStatus };
     const empty = chatStream.querySelector('.chat-empty');
     if (empty) chatStream.innerHTML = ''; // first turn — drop the placeholder
-    agentStartAt = Date.now();
     startThinking();
     const mode = chat.takeMode(); // sticky posture: 'discuss' or 'apply' (Shift+Tab cycles)
 
@@ -3222,17 +2914,14 @@ export function mount() {
     }
     chatText.value = '';
 
-    streamAgentRun(
-      { agent: selectedAgent, model: selectedModel, markdown, resume: chat.sessionId(), mode },
-      {
-        onAction: renderChatAction,
-        onBridgeError: (m) => { agentErrored = true; cLog('err', '⚠', escHtml(m)); chat.record({ k: 'err', m }); },
-        onBridgeEnd: () => finishChat(null),
-        onStreamEnd: () => finishChat(null),
-        onError: (m) => finishChat(m),
-      },
-      bridgeFetch,
-    );
+    agentRun.run({
+      payload: { markdown, resume: chat.sessionId(), mode },
+      // a plain chat turn pulses no pins and resolves no queued comments
+      onAction: renderChatAction,
+      onBridgeError: (m) => { agentRun.markErrored(); cLog('err', '⚠', escHtml(m)); chat.record({ k: 'err', m }); },
+      beforeFinish: chatBeforeFinish,
+      afterFinish: chatAfterFinish,
+    });
   };
   // Comments-tab "Send to agent": hand the *selected* comments (+ an optional
   // note on how to apply them) to the Chat tab and let the agent resolve them
@@ -3241,28 +2930,23 @@ export function mount() {
   // chat session + finish/render path. The sent comments are deleted on success.
   const sendCommentsToChat = () => {
     const anns = selectedIds.map((id) => Q.get(id)).filter(Boolean);
-    if (agentRunning || !selectedAgent || !anns.length) return;
+    if (agentRun.isRunning() || !picker.getSelectedAgent() || !anns.length) return;
     const noteText = addNoteText.value.trim();
     selectTab('chat');
     if (!drawerOpen) openDrawer();
     // Start a fresh chat thread so the comments stream into a clean transcript —
     // the same clean slate the floating panel gives, never stacking onto an
     // earlier run. Prior threads stay reachable from the history menu. (Done
-    // before agentRunning flips, so switchChat's mid-stream guard passes.)
+    // before the run flips its gate, so switchChat's mid-stream guard passes.)
     chat.newChat();
     switchChat();
-    agentRunning = true;
-    agentErrored = false;
-    closeTextRow();
     commentsSend.disabled = true;
     chatSend.disabled = true;
     surface = { log: chatStream, status: chatStatus };
     const empty = chatStream.querySelector('.chat-empty');
     if (empty) chatStream.innerHTML = ''; // first turn — drop the placeholder
-    agentStartAt = Date.now();
     startThinking();
-    pendingResolveIds = anns.map((a) => a.id); // deleted once the run succeeds
-    markThinkingBubbles(pendingResolveIds); // flash the pins for the comments being resolved
+    const resolveIds = anns.map((a) => a.id);
 
     const parts = ['Please resolve the following comments by editing the source:', toMarkdownFor(anns)];
     if (noteText) parts.push('## How to apply\n' + noteText);
@@ -3271,17 +2955,28 @@ export function mount() {
     cLog('you', '›', escHtml(summary));
     chat.record({ k: 'you', text: summary });
 
-    streamAgentRun(
-      { agent: selectedAgent, model: selectedModel, markdown, resume: chat.sessionId(), mode: 'apply-once' },
-      {
-        onAction: renderChatAction,
-        onBridgeError: (m) => { agentErrored = true; cLog('err', '⚠', escHtml(m)); chat.record({ k: 'err', m }); },
-        onBridgeEnd: () => finishChat(null),
-        onStreamEnd: () => finishChat(null),
-        onError: (m) => finishChat(m),
+    agentRun.run({
+      payload: { markdown, resume: chat.sessionId(), mode: 'apply-once' },
+      workingIds: resolveIds, // flash the pins for the comments being resolved
+      resolveAnnotations: resolveIds, // dropped from the queue on success
+      onAction: renderChatAction,
+      onBridgeError: (m) => { agentRun.markErrored(); cLog('err', '⚠', escHtml(m)); chat.record({ k: 'err', m }); },
+      beforeFinish: chatBeforeFinish,
+      // A successful comments→chat send resolves those comments: drop them from
+      // the queue, clear the selection + note. A failed run keeps them for retry.
+      onResolved: (ids) => {
+        const s = new Set(ids);
+        Q.removeMany(s);
+        s.forEach((id) => locator.forget(id));
+        selectedIds = selectedIds.filter((id) => !s.has(id));
+        addNoteText.value = '';
+        addNoteBox.classList.remove('open');
+        refreshCount();
+        renderBubbles();
+        closePopover();
       },
-      bridgeFetch,
-    );
+      afterFinish: chatAfterFinish,
+    });
   };
 
   // Replay the persisted transcript into the stream (called once on init); an
@@ -3331,7 +3026,7 @@ export function mount() {
   // Switch the open conversation: drop the half-composed draft (chips/input are
   // per-turn, not per-chat), replay the target thread, and refresh the chrome.
   const switchChat = () => {
-    if (agentRunning) return; // never swap threads mid-stream
+    if (agentRun.isRunning()) return; // never swap threads mid-stream
     chat.clearChips();
     renderChatChips();
     chatText.value = '';
@@ -3618,8 +3313,7 @@ export function mount() {
   // CSS bottom-center anchoring. Returns the applied { left, top }.
   const setBarPos = (left, top) => {
     const r = bar.getBoundingClientRect();
-    const l = Math.max(8, Math.min(left, window.innerWidth - r.width - 8));
-    const t = Math.max(8, Math.min(top, window.innerHeight - r.height - 8));
+    const { left: l, top: t } = clampBarPos(left, top, { width: r.width, height: r.height }, { w: window.innerWidth, h: window.innerHeight });
     bar.style.left = l + 'px';
     bar.style.top = t + 'px';
     bar.style.bottom = 'auto';
@@ -3668,10 +3362,7 @@ export function mount() {
     const first = bar.getBoundingClientRect();
     mutate(first); // toggle class + set the final right-anchored position
     const last = bar.getBoundingClientRect();
-    const dx = first.left - last.left;
-    const dy = first.top - last.top;
-    const sx = first.width / last.width;
-    const sy = first.height / last.height;
+    const { dx, dy, sx, sy } = flipDeltas(first, last);
     bar.style.transformOrigin = 'top left';
     bar.style.transition = 'none';
     bar.style.transform = `translate(${dx}px, ${dy}px) scale(${sx}, ${sy})`;
@@ -3689,7 +3380,7 @@ export function mount() {
     bar.addEventListener('transitionend', done);
   };
   // Center the new footprint (width w, height h) on the old one's right edge.
-  const rightAnchor = (first, w, h) => setBarPos(first.right - w, first.top + (first.height - h) / 2);
+  const rightAnchor = (first, w, h) => { const p = rightAnchorPos(first, w, h); return setBarPos(p.left, p.top); };
   const collapseBar = () => {
     flipBar((first) => {
       bar.classList.add('collapsed');
@@ -3714,12 +3405,10 @@ export function mount() {
   // mid-animation. No-op while the feed is closed.
   const positionCpanel = () => {
     if (!cpanel.classList.contains('open')) return;
-    const cw = cpanel.offsetWidth;
-    let left = bar.offsetLeft + bar.offsetWidth / 2 - cw / 2;
-    left = Math.max(8, Math.min(left, window.innerWidth - cw - 8));
+    const { left, bottom } = cpanelPos(bar, cpanel.offsetWidth, { w: window.innerWidth, h: window.innerHeight });
     cpanel.style.left = left + 'px';
     cpanel.style.right = 'auto';
-    cpanel.style.bottom = Math.max(8, window.innerHeight - bar.offsetTop + 12) + 'px';
+    cpanel.style.bottom = bottom + 'px';
     cpanel.style.transform = 'none';
   };
 
@@ -3863,7 +3552,7 @@ export function mount() {
       return;
     }
     if (e.target.closest('[data-act="chat-new"]')) {
-      if (agentRunning) return; // can't start a thread while one is streaming
+      if (agentRun.isRunning()) return; // can't start a thread while one is streaming
       chat.newChat();
       closeChatHistory();
       switchChat();
@@ -3889,7 +3578,7 @@ export function mount() {
     }
     const histOpen = e.target.closest('[data-act="chat-open"]');
     if (histOpen) {
-      if (agentRunning) return;
+      if (agentRun.isRunning()) return;
       chat.selectChat(histOpen.closest('.chat-hist-item').dataset.chat);
       closeChatHistory();
       switchChat();
@@ -4147,7 +3836,7 @@ export function mount() {
   // "agent:model"; model '' = the CLI default). Shown whenever there's a choice;
   // none installed → Send stays disabled. The picker is the only place an agent
   // name appears (everything else stays agent-agnostic).
-  const modelsOf = (ag) => (ag.models && ag.models.length ? ag.models : [{ label: 'Default', value: '' }]);
+  const modelsOf = picker.modelsOf;
   const AGENT_CHECK =
     '<svg class="agent-opt-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>';
   // The chat composer hosts the inline combobox (shown only when there's more
@@ -4167,13 +3856,13 @@ export function mount() {
     };
   });
   const menuHtml = () =>
-    availableAgents
+    picker.getAgents()
       .map((ag) => {
         const opts = modelsOf(ag)
           .map((m) => {
-            const sel = ag.name === selectedAgent && m.value === selectedModel;
+            const sel = picker.isSelected(ag.name, m.value);
             return (
-              `<button class="agent-opt${sel ? ' sel' : ''}" data-value="${ag.name}:${m.value}" data-label="${escHtml(m.label)}">` +
+              `<button class="agent-opt${sel ? ' sel' : ''}" data-value="${picker.format(ag.name, m.value)}" data-label="${escHtml(m.label)}">` +
               AGENT_CHECK +
               `<span>${escHtml(m.label)}</span></button>`
             );
@@ -4192,13 +3881,13 @@ export function mount() {
   const gearModelMenu = $('.bar .gear-model-menu');
   const gearModelVal = $('.bar .gear-model-val');
   const gearModelHtml = () =>
-    availableAgents
+    picker.getAgents()
       .map((ag) => {
         const opts = modelsOf(ag)
           .map((m) => {
-            const sel = ag.name === selectedAgent && m.value === selectedModel;
+            const sel = picker.isSelected(ag.name, m.value);
             return (
-              `<button class="gear-opt${sel ? ' sel' : ''}" data-value="${ag.name}:${m.value}" data-label="${escHtml(m.label)}">` +
+              `<button class="gear-opt${sel ? ' sel' : ''}" data-value="${picker.format(ag.name, m.value)}" data-label="${escHtml(m.label)}">` +
               AGENT_CHECK.replace('agent-opt-check', 'gear-opt-check') +
               `<span class="gear-opt-label">${escHtml(m.label)}</span></button>`
             );
@@ -4228,31 +3917,29 @@ export function mount() {
       .catch(() => applySkills([]));
   };
 
-  const select = (agent, model, label) => {
-    selectedAgent = agent;
-    selectedModel = model;
-    pickers.forEach((p) => { p.label.textContent = label; });
-    chat.setSession(null); // the chat thread's resume id is stale under a new agent
+  // Fire the effects of a picker selection intent. The picker (pure) has already
+  // committed the selection + told us what changed; the DOM/effect work — which
+  // it can't do — lives here. Behaviour-preserving: the picker reports
+  // resetSession/reloadSkills as always-true (matching today's unconditional
+  // reset-on-every-pick), so this runs them every time.
+  const applySelect = (intent) => {
+    pickers.forEach((p) => { p.label.textContent = intent.label; });
+    if (intent.resetSession) chat.setSession(null); // resume id is stale under a new agent
     renderAllMenus();
-    renderGearModels(label);
+    renderGearModels(intent.label);
     refreshCount();
     updateCommentsActions();
-    loadSkills(agent); // the "/" menu follows the agent
+    if (intent.reloadSkills) loadSkills(intent.agent); // the "/" menu follows the agent
     chatStateUpdate();
   };
   const applyAgents = (agents) => {
-    availableAgents = Array.isArray(agents) ? agents : [];
-    const first = availableAgents[0];
-    selectedAgent = first ? first.name : null;
-    selectedModel = first ? modelsOf(first)[0].value : '';
-    const label = first ? modelsOf(first)[0].label : 'No agent';
-    const total = availableAgents.reduce((n, ag) => n + modelsOf(ag).length, 0);
-    pickers.forEach((p) => { p.label.textContent = label; p.wrap.classList.toggle('show', p.alwaysShow || total > 1); });
+    const seed = picker.applyAgents(agents);
+    pickers.forEach((p) => { p.label.textContent = seed.label; p.wrap.classList.toggle('show', p.alwaysShow || seed.hasChoice); });
     renderAllMenus();
-    renderGearModels(label);
+    renderGearModels(seed.label);
     refreshCount();
     updateCommentsActions();
-    loadSkills(selectedAgent); // prime the "/" menu for the default agent
+    loadSkills(seed.agent); // prime the "/" menu for the default agent
     chatStateUpdate();
   };
   pickers.forEach((p) => {
@@ -4265,9 +3952,7 @@ export function mount() {
       }
       const opt = e.target.closest('.agent-opt');
       if (opt) {
-        const v = opt.dataset.value;
-        const i = v.indexOf(':');
-        select(v.slice(0, i), v.slice(i + 1), opt.dataset.label);
+        applySelect(picker.select(opt.dataset.value, opt.dataset.label));
         closeAgentMenu();
       }
     });
@@ -4277,9 +3962,7 @@ export function mount() {
   gearMenu.addEventListener('click', (e) => {
     const opt = e.target.closest('.gear-opt');
     if (!opt) return;
-    const v = opt.dataset.value;
-    const i = v.indexOf(':');
-    select(v.slice(0, i), v.slice(i + 1), opt.dataset.label);
+    applySelect(picker.select(opt.dataset.value, opt.dataset.label));
     closeGearMenu();
   });
   // Dismiss on any press outside both comboboxes (composedPath crosses the shadow).
