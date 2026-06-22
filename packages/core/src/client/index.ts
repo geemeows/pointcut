@@ -210,6 +210,10 @@ export function mount() {
         overflow: hidden; border-radius: 50%;
       }
       .bar.collapsed .puck.dragging { cursor: grabbing; }
+      /* While the agent works, the collapsed puck pulses its visibility — the
+         same cpulse the in-stream thinking logo uses — so the circle reads as
+         "busy" even with the feed scrolled away. */
+      .bar.collapsed.thinking .puck { animation: cpulse 1.1s ease-in-out infinite; }
       /* The mark's glyph fills ~76% of its viewBox, so a 48px box matches the
          48px circle with the glyph filling it the way the brand asset does. */
       .puck svg { width: 48px; height: 48px; display: block; }
@@ -2163,10 +2167,12 @@ export function mount() {
   };
   const startThinking = () => {
     if (wordTimer) clearInterval(wordTimer);
+    bar.classList.add('thinking'); // pulses the puck while collapsed (CSS-gated on .collapsed)
     setStatus('run', nextWord());
     wordTimer = setInterval(() => setStatus('run', nextWord()), 2800);
   };
   const stopThinking = (errored) => {
+    bar.classList.remove('thinking');
     if (wordTimer) { clearInterval(wordTimer); wordTimer = null; }
     const dur = fmtDuration(Date.now() - agentStartAt);
     setStatus(errored ? 'err' : 'done', errored ? `Failed after ${dur}` : `✻ Brewed for ${dur}`);
@@ -2234,7 +2240,12 @@ export function mount() {
     // Single-comment / whole-queue sends from the bar + bubbles stream into the
     // floating panel. (The Comments tab's "Send to agent" routes to Chat instead.)
     surface = { log: cpanelLog, status: panelStatus };
+    // Collapse the toolbar to its brand circle and float the feed above it: the
+    // puck pulses (startThinking adds .thinking) while the agent works and the
+    // chat reads as hovering over the circle, matching the send-to-agent intent.
+    if (!bar.classList.contains('collapsed')) collapseBar();
     cpanel.classList.add('open');
+    positionCpanel();
     agentStartAt = Date.now();
     startThinking();
     sentIds = anns.map((a) => a.id);
@@ -2881,6 +2892,7 @@ export function mount() {
     if (!barDrag) return;
     if (Math.hypot(e.clientX - barDrag.x0, e.clientY - barDrag.y0) > DRAG_THRESHOLD) barDrag.moved = true;
     setBarPos(e.clientX - barDrag.dx, e.clientY - barDrag.dy);
+    positionCpanel(); // drag the floating feed along with the bar
   };
   const onGripUp = () => {
     const d = barDrag;
@@ -2953,6 +2965,24 @@ export function mount() {
       const r = bar.getBoundingClientRect();
       rightAnchor(first, r.width, r.height);
     });
+    positionCpanel(); // keep the floating feed anchored to the bar's new footprint
+  };
+
+  // Anchor the floating agent feed (cpanel) just above the bar's resting box,
+  // horizontally centred on the bar but clamped to the viewport — so when a send
+  // collapses the bar to its circle, the chat sits right above the puck (and
+  // hugs whichever corner the circle was dragged to). offset* reads the settled
+  // layout box, ignoring the in-flight FLIP transform, so this is safe to call
+  // mid-animation. No-op while the feed is closed.
+  const positionCpanel = () => {
+    if (!cpanel.classList.contains('open')) return;
+    const cw = cpanel.offsetWidth;
+    let left = bar.offsetLeft + bar.offsetWidth / 2 - cw / 2;
+    left = Math.max(8, Math.min(left, window.innerWidth - cw - 8));
+    cpanel.style.left = left + 'px';
+    cpanel.style.right = 'auto';
+    cpanel.style.bottom = Math.max(8, window.innerHeight - bar.offsetTop + 12) + 'px';
+    cpanel.style.transform = 'none';
   };
 
   // ---- Add-note (top action bar) -------------------------------------------
@@ -3296,6 +3326,7 @@ export function mount() {
     }
   });
   window.addEventListener('scroll', () => picking && hideOutline(), true);
+  window.addEventListener('resize', () => positionCpanel()); // re-anchor the feed if the viewport changes
 
   // ---- Init ----------------------------------------------------------------
   // (Legacy-record backfill — missing id/type — is handled inside createQueue.)
