@@ -621,7 +621,84 @@ export function mount() {
         box-shadow: 0 12px 36px rgba(0,0,0,.5), 0 0 0 1px rgba(255,255,255,.06);
         width: 320px; box-sizing: border-box; font-size: 13px;
       }
-      .panel.note { width: 400px; }
+      /* Note panel — Concept 2 "command-bar bubble": a compact, intent-first
+         strip (header · intent · input · property row · value strip · footer).
+         Surfaces are scoped to the note so the rest of the toolbar keeps its
+         own palette; only the brand accent (--pc-accent) is shared. */
+      .panel.note {
+        --nb-bg: #11161D; --nb-surface: #151A21; --nb-surface-2: #0D1117; --nb-surface-3: #1B222B;
+        --nb-border: #2A3440; --nb-border-strong: #3B4654;
+        --nb-text: #F4F7FB; --nb-text-2: #B6BEC9; --nb-muted: #7D8793; --nb-warning: #F7C948;
+        width: 456px; max-width: calc(100vw - 24px); padding: 14px; border-radius: 14px;
+        /* Hidden until openNote(); positionPanel() sets an inline display:block
+           to reveal it. (The base must stay none — it's more specific than
+           .panel's display:none, so a flex/block here would show it on load.) */
+        display: none; flex-direction: column; gap: 10px;
+        background: var(--nb-bg); border: 1px solid var(--nb-border); color: var(--nb-text);
+        box-shadow: 0 18px 42px rgba(0,0,0,.34);
+      }
+      /* positionPanel() forces an inline display:block when the note opens,
+         which overrides display:flex and silently kills the column gap. Carry
+         the major-row rhythm on adjacent-sibling margins so it survives that.
+         Hidden rows (display:none tray, collapsed tabs) drop out cleanly. */
+      .panel.note > * + * { margin-top: 10px; }
+      /* 1. Header — source pill on the left, ⌘↵ hint + close on the right. */
+      .note-head { display: flex; align-items: center; gap: 6px; height: 22px; }
+      .note .src {
+        height: 22px; padding: 0 8px; margin-bottom: 0; min-width: 0; border-radius: 7px;
+        background: var(--nb-surface-3); color: var(--nb-text-2); font-size: 11px;
+      }
+      .note .src svg { opacity: .8; }
+      .note .src.linkable:hover { color: var(--pc-accent); background: var(--nb-surface-3); }
+      .head-spacer { flex: 1; }
+      .icon-x {
+        all: unset; box-sizing: border-box; cursor: pointer; flex: none;
+        width: 22px; height: 22px; border-radius: 7px; display: inline-flex;
+        align-items: center; justify-content: center; color: var(--nb-muted); transition: background .12s, color .12s;
+      }
+      .icon-x:hover { background: var(--nb-surface-3); color: var(--nb-text); }
+      .icon-x svg { width: 13px; height: 13px; }
+      /* 2. Intent row label — the category selector sits inline after it. */
+      .intent-label {
+        flex: none; width: 46px; font-size: 10px; font-weight: 700; letter-spacing: .08em;
+        text-transform: uppercase; color: var(--nb-muted);
+      }
+      /* 3. Command input — compact (~40px) until expanded. */
+      .input-wrap {
+        position: relative; background: var(--nb-surface-2);
+        border: 1px solid var(--nb-border); border-radius: 10px; transition: border-color .12s, box-shadow .12s;
+      }
+      .input-wrap:focus-within { border-color: var(--pc-accent); box-shadow: 0 0 0 2px rgba(182,250,5,.08); }
+      .note .input-wrap textarea {
+        width: 100%; box-sizing: border-box; min-height: 42px; max-height: 76px; resize: none;
+        background: transparent; color: var(--nb-text); border: 0; box-shadow: none;
+        padding: 12px 46px 12px 12px; font: inherit; font-size: 13px; line-height: 18px;
+      }
+      .note .input-wrap textarea::placeholder { color: var(--nb-muted); }
+      .note.expanded .input-wrap textarea { min-height: 92px; max-height: 140px; padding-top: 10px; padding-bottom: 10px; }
+      .note .input-wrap textarea:focus { outline: none; border: 0; box-shadow: none; }
+      /* Expand/collapse — a compact ghost icon button vertically centred on the
+         input's right edge. Quiet at rest; firms up when the input or the button
+         is hovered/focused, so it reads as an intentional action rather than a
+         resize grip. The icon swaps with the expanded state. */
+      .expand {
+        all: unset; box-sizing: border-box; cursor: pointer; position: absolute; right: 8px; top: 50%;
+        transform: translateY(-50%); width: 26px; height: 26px; border-radius: 7px;
+        display: inline-flex; align-items: center; justify-content: center;
+        background: transparent; border: 1px solid transparent; color: var(--nb-muted);
+        opacity: .65; transition: background .12s, border-color .12s, color .12s, opacity .12s;
+      }
+      .input-wrap:hover .expand, .input-wrap:focus-within .expand { opacity: 1; }
+      .expand:hover { background: var(--nb-surface-3); border-color: var(--nb-border); color: var(--nb-text); opacity: 1; }
+      .expand:focus-visible {
+        background: var(--nb-surface-3); border-color: rgba(182,250,5,.7);
+        box-shadow: 0 0 0 2px rgba(182,250,5,.12); color: var(--nb-text); opacity: 1;
+      }
+      .expand svg { width: 13px; height: 13px; display: block; }
+      .note.expanded .expand { top: 12px; transform: none; }
+      .expand .ic-collapse { display: none; }
+      .note.expanded .expand .ic-expand { display: none; }
+      .note.expanded .expand .ic-collapse { display: block; }
       .src {
         display: inline-flex; align-items: center; gap: 6px; max-width: 100%; box-sizing: border-box;
         background: rgba(255,255,255,.05); border-radius: 7px; padding: 5px 8px; margin-bottom: 12px;
@@ -630,110 +707,130 @@ export function mount() {
       .src svg { width: 13px; height: 13px; flex: none; opacity: .7; }
       .src .src-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
       .src.linkable { cursor: pointer; }
-      .src.linkable:hover { color: #8fb4ff; background: rgba(143,180,255,.12); }
+      .src.linkable:hover { color: var(--pc-accent); background: rgba(182,250,5,.1); }
       .panel textarea {
         width: 100%; box-sizing: border-box; min-height: 76px; resize: none;
         background: #11141a; color: #fff; border: 1px solid #2b313c; border-radius: 12px;
         padding: 9px 10px; font: inherit; font-size: 13px;
       }
       .panel textarea:focus { outline: none; border-color: var(--pc-accent); box-shadow: 0 0 0 3px rgba(182,250,5,.22); }
-      /* Spacing control (note box, element picks only) — 0004 */
-      .spacing-ctl { display: none; align-items: center; gap: 8px; margin-top: 10px; }
-      .spacing-ctl.show { display: flex; }
-      .sp-props { display: inline-flex; gap: 4px; }
-      .sp-prop {
-        all: unset; box-sizing: border-box; cursor: pointer; padding: 5px 10px; border-radius: 8px;
-        background: #11141a; border: 1px solid #2b313c; color: #cfd5df; font-size: 11px; font-weight: 500;
-        transition: background .12s, border-color .12s, color .12s;
+      /* 2. Intent row container — the change categories. Single source of truth
+         for the active category; it drives the property row + value strip below.
+         Stays one line (scrolls if cramped); a staged edit flags its tab. */
+      .ctl-tabs { display: none; align-items: center; gap: 7px; height: 30px; flex-wrap: nowrap; overflow-x: auto; }
+      .ctl-tabs.show { display: flex; }
+      .ctl-tab {
+        all: unset; box-sizing: border-box; cursor: pointer; position: relative; flex: none; white-space: nowrap;
+        height: 30px; padding: 0 12px; border-radius: 9px; display: inline-flex; align-items: center;
+        background: var(--nb-surface-3); border: 1px solid transparent;
+        color: var(--nb-text); font-size: 12px; font-weight: 700; transition: background .12s, border-color .12s;
       }
-      .sp-prop:hover { background: #1b1f27; }
-      .sp-prop.active { background: rgba(22,163,148,.18); border-color: #16a394; color: #7ff0e0; }
-      .sp-stepper { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; }
-      .sp-stepper[hidden] { display: none; }
-      .sp-step {
-        all: unset; box-sizing: border-box; cursor: pointer; width: 26px; height: 26px; border-radius: 8px;
-        display: inline-flex; align-items: center; justify-content: center; font-size: 16px; line-height: 1;
-        background: #2a2c30; color: #e7e9ee; transition: background .12s;
+      .ctl-tab[hidden] { display: none; }
+      .ctl-tab:hover { background: #222b35; }
+      .ctl-tab.active { background: rgba(182,250,5,.08); border-color: rgba(182,250,5,.75); }
+      .ctl-tab.staged::after {
+        content: ''; position: absolute; top: 4px; right: 6px; width: 5px; height: 5px;
+        border-radius: 50%; background: var(--pc-accent);
       }
-      .sp-step:hover { background: #363940; }
-      .sp-readout {
-        min-width: 132px; text-align: center; font-size: 11px; color: #e7e9ee;
-        font-variant-numeric: tabular-nums;
+      /* 4. Contextual controls tray — progressive disclosure. Hidden until an
+         intent chip opens it; wraps the active category's property row + value
+         editor in one quiet surface so the resting bubble stays calm. */
+      .ctl-tray {
+        display: none; flex-direction: column; gap: 8px; box-sizing: border-box; padding: 8px;
+        border-radius: 11px; background: var(--nb-surface-2); border: 1px solid #202A36;
       }
-      .sp-readout .sp-token { color: #7ff0e0; font-weight: 600; }
-      .sp-readout .sp-off { color: #e0b34b; margin-left: 5px; }
-      /* Color control (note box, element picks only) — 0005 */
-      .color-ctl { display: none; flex-direction: column; gap: 8px; margin-top: 10px; }
-      .color-ctl.show { display: flex; }
-      .cl-props { display: inline-flex; gap: 4px; }
-      .cl-prop {
-        all: unset; box-sizing: border-box; cursor: pointer; padding: 5px 10px; border-radius: 8px;
-        background: #11141a; border: 1px solid #2b313c; color: #cfd5df; font-size: 11px; font-weight: 500;
-        transition: background .12s, border-color .12s, color .12s;
+      .ctl-tray.show { display: flex; }
+      /* Property row — the active category's properties (Padding/Margin/Gap,
+         Fill/Text/Border, …) as content-sized chips, not a stretched bar. */
+      .ctl-strip {
+        display: inline-flex; align-self: flex-start; align-items: center; gap: 6px; width: fit-content;
+        max-width: 100%; flex-wrap: nowrap; overflow-x: auto;
       }
-      .cl-prop:hover { background: #1b1f27; }
-      .cl-prop.active { background: rgba(22,163,148,.18); border-color: #16a394; color: #7ff0e0; }
-      .cl-panel { display: flex; flex-direction: column; gap: 8px; }
-      .cl-panel[hidden] { display: none; }
-      .cl-role { font-size: 11px; color: #9aa3b2; }
-      .cl-role .cl-rname { color: #7ff0e0; font-weight: 600; }
-      .cl-role.none { color: #e0b34b; }
-      .cl-ramp { display: flex; flex-wrap: wrap; gap: 6px; }
+      .sp-prop, .cl-prop, .ty-prop {
+        all: unset; box-sizing: border-box; cursor: pointer; position: relative; flex: none;
+        height: 28px; padding: 0 11px; border-radius: 8px;
+        display: inline-flex; align-items: center; justify-content: center;
+        background: var(--nb-surface); border: 1px solid var(--nb-border); color: var(--nb-text-2);
+        font-size: 12px; font-weight: 650; transition: background .12s, color .12s, border-color .12s;
+      }
+      .sp-prop:hover, .cl-prop:hover, .ty-prop:hover { color: var(--nb-text); border-color: var(--nb-border-strong); }
+      .sp-prop.active, .cl-prop.active, .ty-prop.active {
+        background: rgba(182,250,5,.08); border-color: rgba(182,250,5,.65); color: var(--pc-accent);
+      }
+      /* 5. Contextual value editor — edits the selected property only. Shared
+         shell across spacing/type (token · value · stepper · off-scale) and
+         color (role · swatches). Hidden until a property is chosen. */
+      .ctl-body { display: none; flex-direction: column; gap: 8px; }
+      .ctl-body.show { display: flex; }
+      .ctl-ctx {
+        display: grid; grid-template-columns: 1fr auto auto; align-items: center; gap: 12px; min-height: 38px;
+        box-sizing: border-box; padding: 7px 8px; background: var(--nb-surface); border: 1px solid var(--nb-border); border-radius: 9px;
+      }
+      .ctl-ctx[hidden] { display: none; }
+      .ctx-token { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
+      .ctx-token .ctx-tok { font-size: 12px; font-weight: 750; color: var(--pc-accent); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; white-space: nowrap; }
+      .ctx-token .ctx-val { font-size: 12px; font-weight: 600; color: var(--nb-text-2); }
+      .ctx-note { font-size: 11px; color: var(--nb-muted); white-space: nowrap; }
+      .ctx-note.warn { color: var(--nb-warning); }
+      .ctx-note:empty { display: none; }
+      /* Numeric stepper (spacing + type) — −  value  +  in one bordered cell. */
+      .sp-stepper, .ty-stepper {
+        display: grid; grid-template-columns: 28px 40px 28px; height: 28px; flex: none;
+        border: 1px solid var(--nb-border); border-radius: 7px; overflow: hidden;
+      }
+      .sp-step, .ty-step {
+        all: unset; box-sizing: border-box; cursor: pointer; display: inline-flex; align-items: center;
+        justify-content: center; background: var(--nb-surface-3); color: var(--nb-text-2);
+        font-size: 14px; line-height: 1; transition: background .12s;
+      }
+      .sp-step:hover, .ty-step:hover { background: #222b35; }
+      .sp-num, .ty-num {
+        display: flex; align-items: center; justify-content: center; background: var(--nb-bg);
+        color: var(--nb-text); font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums;
+      }
+      /* Color strip (reuses the .ctl-ctx shell) — role label · primitive ramp. */
+      .cl-role { font-size: 11px; color: var(--nb-text-2); min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .cl-role .cl-rname { color: var(--pc-accent); font-weight: 600; }
+      .cl-role.none { color: var(--nb-warning); }
+      .cl-ramp { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; grid-column: 2 / 4; justify-self: end; }
       .cl-swatch {
-        all: unset; box-sizing: border-box; cursor: pointer; width: 22px; height: 22px; border-radius: 6px;
-        border: 1px solid rgba(255,255,255,.18); transition: transform .1s, box-shadow .1s;
+        all: unset; box-sizing: border-box; cursor: pointer; width: 18px; height: 18px; border-radius: 5px;
+        border: 1px solid var(--nb-border); transition: transform .1s, box-shadow .1s;
       }
       .cl-swatch:hover { transform: scale(1.12); }
-      .cl-swatch.active { box-shadow: 0 0 0 2px #11141a, 0 0 0 4px #7ff0e0; }
-      /* Typography control (note box, element picks only) — 0006 */
-      .type-ctl { display: none; align-items: center; gap: 8px; margin-top: 10px; }
-      .type-ctl.show { display: flex; }
-      .ty-props { display: inline-flex; gap: 4px; }
-      .ty-prop {
-        all: unset; box-sizing: border-box; cursor: pointer; padding: 5px 10px; border-radius: 8px;
-        background: #11141a; border: 1px solid #2b313c; color: #cfd5df; font-size: 11px; font-weight: 500;
-        transition: background .12s, border-color .12s, color .12s;
-      }
-      .ty-prop:hover { background: #1b1f27; }
-      .ty-prop.active { background: rgba(22,163,148,.18); border-color: #16a394; color: #7ff0e0; }
-      .ty-stepper { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; }
-      .ty-stepper[hidden] { display: none; }
-      .ty-step {
-        all: unset; box-sizing: border-box; cursor: pointer; width: 26px; height: 26px; border-radius: 8px;
-        display: inline-flex; align-items: center; justify-content: center; font-size: 16px; line-height: 1;
-        background: #2a2c30; color: #e7e9ee; transition: background .12s;
-      }
-      .ty-step:hover { background: #363940; }
-      .ty-readout {
-        min-width: 148px; text-align: center; font-size: 11px; color: #e7e9ee;
-        font-variant-numeric: tabular-nums;
-      }
-      .ty-readout .ty-token { color: #7ff0e0; font-weight: 600; }
-      .ty-readout .ty-off { color: #e0b34b; margin-left: 5px; }
-      /* Copy / text control (note box, text-leaf element picks only) — 0007 */
-      .copy-ctl { display: none; flex-direction: column; gap: 6px; margin-top: 10px; }
-      .copy-ctl.show { display: flex; }
-      .copy-ctl .cp-label { font-size: 11px; font-weight: 500; color: #cfd5df; }
+      .cl-swatch.active { border: 2px solid var(--pc-accent); }
+      /* Copy / text control (text-leaf picks only) — the lone "Text" property,
+         so it's just the edit field inside the value strip. */
+      .copy-ctl .cp-label { font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--nb-muted); }
       .cp-text {
-        all: unset; box-sizing: border-box; width: 100%; padding: 7px 9px; border-radius: 8px;
-        background: #11141a; border: 1px solid #2b313c; color: #e7e9ee; font-size: 12px;
-        line-height: 1.4; resize: vertical; min-height: 34px;
+        all: unset; box-sizing: border-box; width: 100%; padding: 10px 12px; border-radius: 10px;
+        background: var(--nb-surface-2); border: 1px solid var(--nb-border); color: var(--nb-text); font-size: 13px;
+        line-height: 1.4; resize: vertical; min-height: 40px;
       }
-      .cp-text:focus { border-color: #16a394; }
+      .cp-text:focus { border-color: var(--pc-accent); box-shadow: 0 0 0 2px rgba(182,250,5,.12); }
       .pop-head { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
       .pop-head .src { margin-bottom: 0; min-width: 0; flex: 1; }
       .popover .comment { margin-bottom: 14px; }
       .actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; margin-top: 12px; }
       .act-right { display: flex; align-items: center; gap: 8px; margin-left: auto; }
-      /* Text buttons (note box: Add comment) */
-      .note .actions button {
-        all: unset; box-sizing: border-box; cursor: pointer; padding: 7px 14px; border-radius: 9px;
-        background: #2a2c30; color: #e7e9ee; font-size: 12px; font-weight: 500; white-space: nowrap;
-        transition: background .12s;
+      /* 6. Footer — no drag handle; a quiet comment (save-to-queue) and one
+         bright, compact Send, both flush right. */
+      .note-foot { display: flex; align-items: center; justify-content: flex-end; gap: 8px; height: 36px; }
+      .foot-ghost {
+        all: unset; box-sizing: border-box; cursor: pointer; flex: none;
+        width: 36px; height: 36px; border-radius: 10px; border: 1px solid var(--nb-border); background: var(--nb-surface-3);
+        color: var(--nb-text-2); display: inline-flex; align-items: center; justify-content: center;
+        transition: background .12s, color .12s;
       }
-      .note .actions button:hover { background: #363940; }
-      .note .actions button.primary { background: var(--pc-accent); color: var(--pc-ink); }
-      .note .actions button.primary:hover { background: var(--pc-accent-hover); }
+      .foot-ghost:hover { background: #222b35; color: var(--nb-text); }
+      .foot-ghost svg { width: 16px; height: 16px; }
+      .foot-send {
+        all: unset; box-sizing: border-box; cursor: pointer; flex: none; display: inline-flex;
+        align-items: center; justify-content: center; gap: 7px; width: 88px; height: 36px; border-radius: 10px;
+        background: var(--pc-accent); color: var(--pc-ink); font-size: 13px; font-weight: 800; transition: background .12s;
+      }
+      .foot-send:hover { background: var(--pc-accent-hover); }
+      .foot-send svg { width: 14px; height: 14px; display: block; }
       /* Icon buttons with hover tooltip (popover + drawer rows) */
       .act {
         all: unset; box-sizing: border-box; cursor: pointer; position: relative;
@@ -952,53 +1049,87 @@ export function mount() {
       <div class="bubbles"></div>
 
       <div class="panel note">
-        <div class="src">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
-          <span class="src-name"></span>
+        <div class="note-head">
+          <div class="src">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
+            <span class="src-name"></span>
+          </div>
+          <span class="head-spacer"></span>
+          <button class="icon-x" data-act="note-close" title="Close" aria-label="Close">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+          </button>
         </div>
-        <textarea placeholder="Describe the change…  (⌘/Ctrl+Enter to save)"></textarea>
-        <div class="spacing-ctl">
-          <div class="sp-props">
+        <div class="ctl-tabs">
+          <span class="intent-label">Intent</span>
+          <button class="ctl-tab" data-group="spacing" aria-expanded="false">Spacing</button>
+          <button class="ctl-tab" data-group="color" aria-expanded="false">Color</button>
+          <button class="ctl-tab" data-group="type" aria-expanded="false">Type</button>
+          <button class="ctl-tab" data-group="copy" aria-expanded="false" hidden>Copy</button>
+        </div>
+        <div class="input-wrap">
+          <textarea rows="1" placeholder="Describe the change…  (⌘/Ctrl+Enter to save)"></textarea>
+          <button class="expand" data-act="expand" type="button" title="Expand" aria-label="Expand prompt input">
+            <svg class="ic-expand" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>
+            <svg class="ic-collapse" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14h6v6M20 10h-6V4M14 10 21 3M3 21l7-7"/></svg>
+          </button>
+        </div>
+        <div class="ctl-tray">
+        <div class="spacing-ctl ctl-body">
+          <div class="sp-props ctl-strip">
             <button class="sp-prop" data-prop="padding">Padding</button>
             <button class="sp-prop" data-prop="margin">Margin</button>
             <button class="sp-prop" data-prop="gap">Gap</button>
           </div>
-          <div class="sp-stepper">
-            <button class="sp-step" data-act="sp-dec" title="Smaller">−</button>
-            <span class="sp-readout"></span>
-            <button class="sp-step" data-act="sp-inc" title="Larger">+</button>
+          <div class="ctl-ctx sp-ctx" hidden>
+            <div class="ctx-token sp-readout"></div>
+            <div class="sp-stepper">
+              <button class="sp-step" data-act="sp-dec" title="Smaller">−</button>
+              <span class="sp-num"></span>
+              <button class="sp-step" data-act="sp-inc" title="Larger">+</button>
+            </div>
+            <div class="ctx-note sp-warn"></div>
           </div>
         </div>
-        <div class="color-ctl">
-          <div class="cl-props">
+        <div class="color-ctl ctl-body">
+          <div class="cl-props ctl-strip">
             <button class="cl-prop" data-cprop="background-color">Fill</button>
             <button class="cl-prop" data-cprop="color">Text</button>
             <button class="cl-prop" data-cprop="border-color">Border</button>
           </div>
-          <div class="cl-panel" hidden>
+          <div class="ctl-ctx cl-panel" hidden>
             <span class="cl-role"></span>
             <div class="cl-ramp"></div>
           </div>
         </div>
-        <div class="type-ctl">
-          <div class="ty-props">
+        <div class="type-ctl ctl-body">
+          <div class="ty-props ctl-strip">
             <button class="ty-prop" data-tprop="font-size">Size</button>
             <button class="ty-prop" data-tprop="font-weight">Weight</button>
             <button class="ty-prop" data-tprop="line-height">Line height</button>
           </div>
-          <div class="ty-stepper">
-            <button class="ty-step" data-act="ty-dec" title="Smaller">−</button>
-            <span class="ty-readout"></span>
-            <button class="ty-step" data-act="ty-inc" title="Larger">+</button>
+          <div class="ctl-ctx ty-ctx" hidden>
+            <div class="ctx-token ty-readout"></div>
+            <div class="ty-stepper">
+              <button class="ty-step" data-act="ty-dec" title="Smaller">−</button>
+              <span class="ty-num"></span>
+              <button class="ty-step" data-act="ty-inc" title="Larger">+</button>
+            </div>
+            <div class="ctx-note ty-warn"></div>
           </div>
         </div>
-        <div class="copy-ctl">
-          <div class="cp-label">Text</div>
+        <div class="copy-ctl ctl-body">
+          <div class="cp-label">New copy</div>
           <textarea class="cp-text" rows="2" placeholder="Edit the copy…"></textarea>
         </div>
-        <div class="actions">
-          <button data-act="send-agent">Send to agent</button>
-          <button data-act="save" class="primary">Add comment</button>
+        </div>
+        <div class="note-foot">
+          <button class="foot-ghost" data-act="save" type="button" title="Add comment" aria-label="Add comment">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+          </button>
+          <button class="foot-send" data-act="send-agent" type="button">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4 20-7z"/></svg>
+            <span>Send</span>
+          </button>
         </div>
       </div>
 
@@ -1231,17 +1362,23 @@ export function mount() {
   const noteSrc = note.querySelector('.src');
   const noteText = note.querySelector('textarea');
   const spacingCtl = note.querySelector('.spacing-ctl');
-  const spacingStepper = note.querySelector('.sp-stepper');
-  const spacingReadout = note.querySelector('.sp-readout');
+  const spacingStrip = note.querySelector('.spacing-ctl .ctl-ctx'); // value strip, hidden until a prop is picked
+  const spacingReadout = note.querySelector('.sp-readout'); // left cell: token + value
+  const spacingNum = note.querySelector('.sp-num'); // stepper centre cell
+  const spacingWarn = note.querySelector('.sp-warn'); // off-scale note
   const colorCtl = note.querySelector('.color-ctl');
   const colorPanel = note.querySelector('.cl-panel');
   const colorRole = note.querySelector('.cl-role');
   const colorRampEl = note.querySelector('.cl-ramp');
   const typeCtl = note.querySelector('.type-ctl');
-  const typeStepper = note.querySelector('.ty-stepper');
+  const typeStrip = note.querySelector('.type-ctl .ctl-ctx');
   const typeReadout = note.querySelector('.ty-readout');
+  const typeNum = note.querySelector('.ty-num');
+  const typeWarn = note.querySelector('.ty-warn');
   const copyCtl = note.querySelector('.copy-ctl');
   const copyText = note.querySelector('.cp-text');
+  const ctlTabs = note.querySelector('.ctl-tabs');
+  const ctlTray = note.querySelector('.ctl-tray'); // contextual controls; shown only when controlsOpen
 
   const popover = $('.popover');
   const popSrc = popover.querySelector('.src');
@@ -1285,6 +1422,14 @@ export function mount() {
   // element, and its original text so a cancel restores it. null when the pick
   // isn't a text leaf, or after a reset. (0007)
   let copy = null;
+  // Which intent (control group) is currently active — always one for an
+  // element pick (null for regions/edits). Switching only toggles visibility,
+  // so each intent keeps its last-selected property. Reset on each openNote.
+  let activeGroup = null;
+  // Progressive disclosure: the contextual controls tray (property row + value
+  // editor) only renders when this is true. The bubble opens collapsed; an
+  // intent chip opens the tray, and re-clicking the active intent closes it.
+  let controlsOpen = false;
   let selectedType = TYPES[0].id;
   let openPopId = null;
   let popSide = null; // latched vertical side of the open popover (see placeBeside)
@@ -1452,8 +1597,10 @@ export function mount() {
   // Show the labelled token + px (and an off-scale badge) for the current step.
   const renderSpacing = (c) => {
     spacingReadout.innerHTML =
-      `<span class="sp-token">${c.token}</span> ${c.value}` +
-      (c.offScale ? '<span class="sp-off">≈ off-scale</span>' : '');
+      `<span class="ctx-tok">${c.token}</span><span class="ctx-val">${c.value}</span>`;
+    spacingNum.textContent = c.value;
+    spacingWarn.textContent = c.offScale ? 'off-scale' : '';
+    spacingWarn.classList.toggle('warn', !!c.offScale);
   };
 
   // Paint the throwaway inline preview (precedence beats scoped CSS, D7).
@@ -1471,8 +1618,10 @@ export function mount() {
   // Clear any active session and reset the control's UI to "no property chosen".
   const resetSpacing = () => {
     spacing = null;
-    spacingStepper.hidden = true;
+    spacingStrip.hidden = true;
     spacingReadout.innerHTML = '';
+    spacingNum.textContent = '';
+    spacingWarn.textContent = '';
     spacingCtl.querySelectorAll('.sp-prop').forEach((b) => b.classList.remove('active'));
   };
 
@@ -1496,7 +1645,7 @@ export function mount() {
     spacingCtl.querySelectorAll('.sp-prop').forEach((b) =>
       b.classList.toggle('active', b.dataset.prop === property),
     );
-    spacingStepper.hidden = false;
+    spacingStrip.hidden = false;
     renderSpacing(session.current());
   };
 
@@ -1515,7 +1664,7 @@ export function mount() {
       colorRole.innerHTML = `Role: <span class="cl-rname">${session.role}</span>`;
     } else {
       colorRole.className = 'cl-role none';
-      colorRole.textContent = '⚠ no semantic role — may need one';
+      colorRole.textContent = '⚠ No semantic role — may need one';
     }
   };
 
@@ -1589,8 +1738,10 @@ export function mount() {
   // Show the labelled token + value (and an off-scale badge) for the current step.
   const renderType = (c) => {
     typeReadout.innerHTML =
-      `<span class="ty-token">${c.token}</span> ${c.value}` +
-      (c.offScale ? '<span class="ty-off">≈ off-scale</span>' : '');
+      `<span class="ctx-tok">${c.token}</span><span class="ctx-val">${c.value}</span>`;
+    typeNum.textContent = c.value;
+    typeWarn.textContent = c.offScale ? 'off-scale' : '';
+    typeWarn.classList.toggle('warn', !!c.offScale);
   };
 
   // Paint the throwaway inline preview (precedence beats scoped CSS, D7).
@@ -1608,8 +1759,10 @@ export function mount() {
   // Clear any active session and reset the control's UI to "no facet chosen".
   const resetType = () => {
     type = null;
-    typeStepper.hidden = true;
+    typeStrip.hidden = true;
     typeReadout.innerHTML = '';
+    typeNum.textContent = '';
+    typeWarn.textContent = '';
     typeCtl.querySelectorAll('.ty-prop').forEach((b) => b.classList.remove('active'));
   };
 
@@ -1632,7 +1785,7 @@ export function mount() {
     typeCtl.querySelectorAll('.ty-prop').forEach((b) =>
       b.classList.toggle('active', b.dataset.tprop === property),
     );
-    typeStepper.hidden = false;
+    typeStrip.hidden = false;
     renderType(session.current());
   };
 
@@ -1674,6 +1827,52 @@ export function mount() {
     copyText.value = '';
   };
 
+  // ---- Control group tabs --------------------------------------------------
+  // The note box surfaces one change category at a time: clicking a tab opens
+  // that group's controls and collapses the others. Each group's staged session
+  // (spacing/color/type/copy) survives regardless of which body is visible, so
+  // a note can carry edits from several groups. A group holding a staged edit
+  // flags its tab with an accent dot.
+  const CTL_BODIES = { spacing: spacingCtl, color: colorCtl, type: typeCtl, copy: copyCtl };
+
+  const groupStaged = (g) =>
+    g === 'spacing' ? !!spacing
+      : g === 'color' ? !!color
+        : g === 'type' ? !!type
+          : !!(copy && copyText.value !== copy.before);
+
+  const refreshCtlTabs = () => {
+    ctlTabs.querySelectorAll('.ctl-tab').forEach((t) => {
+      const active = activeGroup === t.dataset.group;
+      // Accent the chip only while its tray is open — a collapsed bubble shows
+      // no highlighted intent, so it reads calm rather than mid-edit.
+      t.classList.toggle('active', active && controlsOpen);
+      t.classList.toggle('staged', groupStaged(t.dataset.group));
+      t.setAttribute('aria-expanded', active && controlsOpen ? 'true' : 'false');
+    });
+  };
+
+  // Reflect activeGroup/controlsOpen onto the DOM: the tray shows only when
+  // open, and within it only the active intent's body. Staged sessions are
+  // untouched — only visibility changes, so each intent keeps its last-selected
+  // property when you switch away and back.
+  const syncControls = () => {
+    ctlTray.classList.toggle('show', controlsOpen && !!activeGroup);
+    Object.entries(CTL_BODIES).forEach(([k, body]) =>
+      body.classList.toggle('show', activeGroup === k),
+    );
+    refreshCtlTabs();
+  };
+
+  // Clicking an intent chip selects it and opens the tray; re-clicking the
+  // already-active intent toggles the tray shut (and back open). This is the
+  // sole driver of controlsOpen, so the resting bubble stays collapsed.
+  const selectGroup = (g) => {
+    if (g === activeGroup) controlsOpen = !controlsOpen;
+    else { activeGroup = g; controlsOpen = true; }
+    syncControls();
+  };
+
   const openNote = (pendingState, anchorRect, prefill) => {
     pending = pendingState;
     selectedType = (prefill && prefill.type) || TYPES[0].id;
@@ -1685,13 +1884,20 @@ export function mount() {
     resetColor();
     resetType();
     resetCopy();
-    spacingCtl.classList.toggle('show', !!pendingState.el);
-    colorCtl.classList.toggle('show', !!pendingState.el);
-    typeCtl.classList.toggle('show', !!pendingState.el);
-    // Copy editing only makes sense on a text leaf; arm it when one is picked.
+    // Controls apply only to a live element pick. Start collapsed: the tabs row
+    // offers the change categories and each group's body discloses on demand,
+    // so the resting panel stays calm instead of stacking three chip rows.
     const textLeaf = !!pendingState.el && isTextLeaf(pendingState.el);
-    copyCtl.classList.toggle('show', textLeaf);
     if (textLeaf) armCopy(pendingState.el);
+    const hasEl = !!pendingState.el;
+    ctlTabs.classList.toggle('show', hasEl);
+    ctlTabs.querySelector('.ctl-tab[data-group="copy"]').hidden = !textLeaf;
+    // An element pick rests on a default intent (spacing) but starts collapsed:
+    // the tray (property row + value editor) stays hidden until a chip opens it,
+    // so the bubble opens calm. Regions/edits show no controls at all.
+    activeGroup = hasEl ? 'spacing' : null;
+    controlsOpen = false;
+    syncControls();
     positionPanel(note, anchorRect);
     noteText.focus();
   };
@@ -1706,6 +1912,12 @@ export function mount() {
     resetType();
     resetCopy();
     note.style.display = 'none';
+    note.classList.remove('expanded');
+    const expandBtn = note.querySelector('.expand');
+    expandBtn.setAttribute('aria-label', 'Expand prompt input');
+    expandBtn.setAttribute('title', 'Expand');
+    controlsOpen = false;
+    ctlTray.classList.remove('show');
     pending = null;
   };
 
@@ -2975,14 +3187,25 @@ export function mount() {
   });
 
   note.addEventListener('click', (e) => {
-    const act = e.target.getAttribute && e.target.getAttribute('data-act');
+    // Resolve via closest so a click on an icon button's inner <svg> still
+    // reads the button's data-act (close + comment + send carry SVGs now).
+    const actEl = e.target.closest && e.target.closest('[data-act]');
+    const act = actEl && actEl.getAttribute('data-act');
     if (act === 'save') saveNote();
     else if (act === 'send-agent') sendNote();
+    else if (act === 'note-close') closeNote();
+    else if (act === 'expand') {
+      const expanded = note.classList.toggle('expanded');
+      actEl.setAttribute('aria-label', expanded ? 'Collapse prompt input' : 'Expand prompt input');
+      actEl.setAttribute('title', expanded ? 'Collapse' : 'Expand');
+    }
     else if (act === 'sp-dec') stepSpacing(-1);
     else if (act === 'sp-inc') stepSpacing(1);
     else if (act === 'ty-dec') stepType(-1);
     else if (act === 'ty-inc') stepType(1);
     else {
+      const tab = e.target.closest && e.target.closest('.ctl-tab');
+      if (tab) { selectGroup(tab.dataset.group); return; }
       const prop = e.target.closest && e.target.closest('.sp-prop');
       if (prop) selectSpacingProp(prop.dataset.prop);
       const cprop = e.target.closest && e.target.closest('.cl-prop');
@@ -2991,6 +3214,7 @@ export function mount() {
       if (swatch) pickColor(swatch.dataset.token);
       const tprop = e.target.closest && e.target.closest('.ty-prop');
       if (tprop) selectTypeProp(tprop.dataset.tprop);
+      refreshCtlTabs(); // a property select/clear changes which groups are staged
     }
   });
   noteSrc.addEventListener('click', () => openInEditor(noteSrc.dataset.loc));
@@ -2998,7 +3222,7 @@ export function mount() {
     if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) saveNote();
     else if (e.key === 'Escape') closeNote();
   });
-  copyText.addEventListener('input', previewCopy); // live preview onto the element
+  copyText.addEventListener('input', () => { previewCopy(); refreshCtlTabs(); }); // live preview onto the element
   copyText.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) saveNote();
     else if (e.key === 'Escape') closeNote();
