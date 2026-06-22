@@ -863,6 +863,9 @@ export function mount() {
         display: flex; align-items: center; justify-content: center;
         box-shadow: 0 2px 8px rgba(0,0,0,.35); transform: translateY(-100%); border: 1.5px solid #fff;
       }
+      /* A comment's pin pulses while the agent works on it — same cpulse the
+         collapsed puck uses, so a glance at the pin or the circle reads "busy". */
+      .bubble.thinking { animation: cpulse 1.1s ease-in-out infinite; }
       /* Agent + model picker — a custom combobox grouped by agent (the menu opens
          above the bar). Shown only when there's a choice; the only place an agent
          name appears, so the rest of the UI stays agent-agnostic. */
@@ -1405,6 +1408,7 @@ export function mount() {
   let openTextMsg = null; // the .msg node currently accumulating streamed prose deltas
   let openTextBuf = ''; // its accumulated text so far
   let sentIds = []; // ids dispatched in the current panel run — removed on success
+  let dismissTimer = null; // post-run timer: auto-closes the panel + re-expands the bar
   let selectedIds = []; // comments checked in the Comments tab (default none); drives the action bar
   let pendingResolveIds = []; // comments handed to Chat via "Send to agent" — deleted on success
   let pending = null; // what we're about to annotate: {el} | {region} | {editId}
@@ -1531,6 +1535,9 @@ export function mount() {
     Q.all().forEach((a, i) => {
       const b = document.createElement('div');
       b.className = 'bubble';
+      // Keep the pulse if this pin is mid-run (a re-render during the agent turn
+      // would otherwise drop it).
+      if (agentRunning && sentIds.includes(a.id)) b.classList.add('thinking');
       b.dataset.id = a.id;
       b.textContent = String(i + 1);
       b.title = a.comment;
@@ -2211,6 +2218,25 @@ export function mount() {
     }
   };
 
+  // Pulse (or stop pulsing) the on-page pins for the comments in the current
+  // run, so each annotated spot flashes while the agent works on it.
+  const markThinkingBubbles = (on) => {
+    bubblesWrap.querySelectorAll('.bubble').forEach((b) => {
+      b.classList.toggle('thinking', on && sentIds.includes(b.dataset.id));
+    });
+  };
+
+  // Tear down the post-run UI: hide the floating feed, re-expand the toolbar
+  // from its brand circle, and disarm any element picker. Used by the auto-
+  // dismiss timer and whenever the panel is closed by hand.
+  const cancelDismiss = () => { if (dismissTimer) { clearTimeout(dismissTimer); dismissTimer = null; } };
+  const dismissPanel = () => {
+    cancelDismiss();
+    cpanel.classList.remove('open');
+    if (bar.classList.contains('collapsed')) expandBar();
+    if (picking) setPicking(false);
+  };
+
   const finishAgent = (reason) => {
     if (!agentRunning) return;
     agentRunning = false;
@@ -2220,18 +2246,29 @@ export function mount() {
       cLog('err', '⚠', escHtml(reason));
     }
     stopThinking(agentErrored);
+    markThinkingBubbles(false); // stop the pin pulse (surviving pins on error / not-yet-removed)
     updateCommentsActions();
+    // The comments run is done: let the user read the result for a beat, then
+    // clear the panel and restore the full toolbar. A new send (which cancels
+    // this) or a clean reload after an applied edit pre-empts it. Errors stay
+    // up so the failure is readable.
+    cancelDismiss();
+    if (!agentErrored) {
+      cLog('ctx', '✕', 'This panel will close automatically in 3s…');
+      dismissTimer = setTimeout(dismissPanel, 3000);
+    }
   };
 
   // Run a turn: dispatch the chosen comments (+ optional typed note) to the
-  // bridge (agent-run.mjs) and stream the reply into one surface. Resumes the
-  // prior session when one exists, so the composer reads as a conversation.
+  // bridge (agent-run.mjs) and stream the reply into the floating panel. Each
+  // send is an independent one-shot (no resume) shown in a freshly wiped feed.
   const runAgent = ({ annotations, note }) => {
     if (agentRunning || !selectedAgent) return;
     const anns = annotations || [];
     const text = (note || '').trim();
     if (!anns.length && !text) return;
 
+    cancelDismiss(); // a new send pre-empts a pending auto-dismiss
     agentRunning = true;
     agentErrored = false;
     closeTextRow(); // fresh run — don't append onto a prior run's last line
@@ -2254,6 +2291,7 @@ export function mount() {
     agentStartAt = Date.now();
     startThinking();
     sentIds = anns.map((a) => a.id);
+    markThinkingBubbles(true); // flash the pins for the comments in this run
 
     const parts = [];
     if (anns.length) parts.push(toMarkdownFor(anns));
@@ -3109,7 +3147,7 @@ export function mount() {
   });
 
   cpanel.addEventListener('click', (e) => {
-    if (e.target.closest('[data-act="agent-close"]')) cpanel.classList.remove('open');
+    if (e.target.closest('[data-act="agent-close"]')) { cancelDismiss(); cpanel.classList.remove('open'); }
   });
 
   drawer.addEventListener('click', (e) => {
@@ -3306,7 +3344,7 @@ export function mount() {
       if (pickers.some((p) => p.menu.classList.contains('open'))) { closeAgentMenu(); return; }
       if (gearMenu.classList.contains('open')) { closeGearMenu(); return; }
       if (chatHistMenu.classList.contains('open')) { closeChatHistory(); return; }
-      if (cpanel.classList.contains('open')) cpanel.classList.remove('open');
+      if (cpanel.classList.contains('open')) { cancelDismiss(); cpanel.classList.remove('open'); }
       else if (drawerOpen) closeDrawer();
       else if (note.style.display === 'block') closeNote();
       else if (openPopId != null) closePopover();
