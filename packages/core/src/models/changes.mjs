@@ -298,6 +298,227 @@ export const toEditableCopy = (copyChange, source = 'auto-detected') => ({
 // value is stored on `after.value` (so describeChanges round-trips the exact
 // display string) with the bare token name kept aside for the agent. Only
 // detected lanes are persisted.
+// ---- Value vocabulary dispatch (CHANGE EDITOR value control) -------------
+// The value control's options come from the project's own tokens (ADR 0001 —
+// introspected live, never hard-coded names) plus universal literal presets so
+// there's always a sensible choice even when a project ships no tokens. The
+// token names also gate validation (isValidDesignValue), so a token is only
+// offered for the lane whose pool it lives in and an out-of-lane token can
+// neither be selected nor saved.
+//
+// This single dispatch replaces the two duplicated 5-way property→scale
+// switches that lived in the client (designPoolNames + designValueOptions). It
+// reads each `tokens.*` scale ONCE and returns BOTH:
+//   names   — the introspected token names (for validation; empty when none)
+//   options — the select option objects ({value,label}); project tokens first
+//             (as "--name · value"), then literal presets, then a Custom… escape
+//             hatch. (designValueOptions appended __custom__; this keeps that.)
+
+const LENGTH_PRESETS = ['4px', '8px', '12px', '16px', '24px'];
+const FONTSIZE_PRESETS = ['14px', '16px', '20px'];
+const WEIGHT_PRESETS = ['400', '500', '600', '700'];
+const LINEHEIGHT_PRESETS = ['1', '1.25', '1.5', '1.75'];
+const COLOR_PRESETS = ['#EF4444', '#3B82F6', '#22C55E', '#111827', '#FFFFFF'];
+
+// Which token scale + literal presets back each property's value control. The
+// scale getter is invoked once per call; an absent `tokens` (or missing getter)
+// yields no token names/options — only the literal presets remain.
+const VALUE_POOL = {
+  padding: { scale: 'spacingScale', presets: LENGTH_PRESETS },
+  margin: { scale: 'spacingScale', presets: LENGTH_PRESETS },
+  gap: { scale: 'spacingScale', presets: LENGTH_PRESETS },
+  fill: { scale: 'colorRamp', presets: COLOR_PRESETS },
+  textColor: { scale: 'colorRamp', presets: COLOR_PRESETS },
+  borderColor: { scale: 'colorRamp', presets: COLOR_PRESETS },
+  fontSize: { scale: 'fontSizeScale', presets: FONTSIZE_PRESETS },
+  fontWeight: { scale: 'fontWeightScale', presets: WEIGHT_PRESETS },
+  lineHeight: { scale: 'fontLineHeightScale', presets: LINEHEIGHT_PRESETS },
+};
+
+// Resolve a property's value vocabulary against the live token scales. Returns
+// { names, options }. `tokens` is the introspection facade (tokens.spacingScale()
+// etc.); each scale entry is { name, value, ... }.
+export const designValuePool = (property, tokens) => {
+  const cfg = VALUE_POOL[property];
+  if (!cfg) return { names: [], options: [{ value: '__custom__', label: 'Custom…' }] };
+
+  const getter = tokens && tokens[cfg.scale];
+  const scale = typeof getter === 'function' ? getter.call(tokens) || [] : [];
+  const names = scale.map((t) => t.name);
+
+  const options = [];
+  const seen = new Set();
+  const push = (value, label) => {
+    if (!value || seen.has(value)) return;
+    seen.add(value);
+    options.push({ value, label: label || value });
+  };
+  scale.forEach((t) => push(`${t.name} · ${t.value}`));
+  cfg.presets.forEach((v) => push(v));
+  options.push({ value: '__custom__', label: 'Custom…' });
+  return { names, options };
+};
+
+// First non-custom option value for a property — the valid default used when a
+// lane is added or its intent/property changes. (Was the client's
+// defaultDesignValue.)
+const firstValue = (property, tokens) => {
+  const o = designValuePool(property, tokens).options.find((x) => x.value !== '__custom__');
+  return o ? o.value : '';
+};
+
+// ---- popDraft state machine (CHANGE EDITOR reducer) ----------------------
+// Pure reducer mirroring reducePickMode: it owns EVERY popDraft transition for
+// the edit-mode CHANGE EDITOR. The client holds popDraft, translates DOM events
+// into the events below, replaces popDraft with the returned draft, then
+// repaints — UNLESS the result asks it not to (the caret-preserving field-input
+// case). The `source='manual'` invariant — a hand-edited lane flips its source
+// so re-detection can't clobber it — lives ONLY here.
+//
+//   draft  = { note, design:{source,intent,property,value,status},
+//              copy:{source,oldText,newText,status},
+//              designOpen, copyOpen, designCustom, detecting }
+//   event  = { type, ... }  (see below)
+//   result = { draft, repaint }   repaint:false ⇒ client updates warn+Save only
+//
+// Events (one per client interaction):
+//   toggle-design / toggle-copy      — expand/collapse a lane (seeds a default
+//                                       lane on first "+ Add")
+//   clear-design / clear-copy        — wipe a lane to no-change, collapse it
+//   detect-design / detect-copy      — re-run note detection; carries
+//                                       { parsed } (the parseIntent result of the
+//                                       current note text); adopts it, source
+//                                       back to auto-detected
+//   field-change { field, value, tokens }
+//                                    — a <select> change (intent/property/value);
+//                                       flips source→manual; repaints
+//   field-input  { field, value }    — free-text input (custom value / new copy);
+//                                       flips source→manual; repaint:false so the
+//                                       client preserves focus/caret
+//
+// `tokens` is threaded into the transitions that need a fresh default value
+// (toggle-design, field-change intent/property) so the model never reaches into
+// the client. detect-* take the already-parsed result so the model stays pure
+// (parseIntent itself is pure but the note text lives on the DOM input).
+
+const editResult = (draft, repaint = true) => ({ draft, repaint });
+
+export const reduceEditor = (draft, event) => {
+  if (!draft) return editResult(draft);
+  switch (event.type) {
+    case 'toggle-design': {
+      if (draft.designOpen) return editResult({ ...draft, designOpen: false });
+      // "+ Add" (nothing set yet) seeds a valid default; the pencil just expands.
+      if (draft.design.status !== 'detected') {
+        return editResult({
+          ...draft,
+          design: {
+            source: 'manual', intent: 'spacing', property: 'padding',
+            value: firstValue('padding', event.tokens), status: 'detected',
+          },
+          designCustom: false,
+          designOpen: true,
+        });
+      }
+      return editResult({ ...draft, designOpen: true });
+    }
+
+    case 'toggle-copy': {
+      if (draft.copyOpen) return editResult({ ...draft, copyOpen: false });
+      if (draft.copy.status !== 'detected') {
+        return editResult({
+          ...draft,
+          copy: { source: 'manual', oldText: draft.copy.oldText, newText: '', status: 'detected' },
+          copyOpen: true,
+        });
+      }
+      return editResult({ ...draft, copyOpen: true });
+    }
+
+    case 'clear-design':
+      return editResult({
+        ...draft,
+        design: { source: 'manual', intent: null, property: null, value: null, status: 'no-change' },
+        designCustom: false,
+        designOpen: false,
+      });
+
+    case 'clear-copy':
+      return editResult({
+        ...draft,
+        copy: { source: 'manual', oldText: draft.copy.oldText, newText: null, status: 'no-change' },
+        copyOpen: false,
+      });
+
+    // Re-run detection from the note (event.parsed = parseIntent(noteText)) and
+    // adopt the result (source back to auto-detected). Stays expanded only when
+    // something was detected.
+    case 'detect-design': {
+      const design = toEditableDesign(event.parsed.designChange, 'auto-detected');
+      return editResult({
+        ...draft,
+        design,
+        designCustom: false,
+        designOpen: design.status === 'detected',
+      });
+    }
+
+    case 'detect-copy': {
+      const copy = toEditableCopy(event.parsed.copyChange, 'auto-detected');
+      return editResult({ ...draft, copy, copyOpen: copy.status === 'detected' });
+    }
+
+    // A select/intent/property/value change. Manual edits flip the lane's source
+    // so note-text detection no longer overwrites it.
+    case 'field-change': {
+      const d = { ...draft.design };
+      if (event.field === 'ed-intent') {
+        d.intent = event.value;
+        d.property = defaultPropertyForIntent(event.value);
+        d.value = firstValue(d.property, event.tokens);
+        d.source = 'manual';
+        d.status = 'detected';
+        return editResult({ ...draft, design: d, designCustom: false });
+      }
+      if (event.field === 'ed-property') {
+        d.property = event.value;
+        d.value = firstValue(event.value, event.tokens);
+        d.source = 'manual';
+        d.status = 'detected';
+        return editResult({ ...draft, design: d, designCustom: false });
+      }
+      if (event.field === 'ed-value') {
+        d.source = 'manual';
+        d.status = 'detected';
+        if (event.value === '__custom__') {
+          d.value = '';
+          return editResult({ ...draft, design: d, designCustom: true });
+        }
+        d.value = event.value;
+        return editResult({ ...draft, design: d, designCustom: false });
+      }
+      return editResult(draft);
+    }
+
+    // Text input (custom value / new copy). Update the draft but DON'T repaint —
+    // the client refreshes only the warning + Save state so focus/caret survive.
+    case 'field-input': {
+      if (event.field === 'ed-value-custom') {
+        const d = { ...draft.design, source: 'manual', status: 'detected', value: event.value };
+        return editResult({ ...draft, design: d }, false);
+      }
+      if (event.field === 'ed-copy-new') {
+        const c = { ...draft.copy, source: 'manual', status: 'detected', newText: event.value };
+        return editResult({ ...draft, copy: c }, false);
+      }
+      return editResult(draft, false);
+    }
+
+    default:
+      return editResult(draft);
+  }
+};
+
 export const editsFromEditable = (design, copy) => {
   const edits = [];
   if (design && design.status === 'detected' && design.intent && design.property) {
