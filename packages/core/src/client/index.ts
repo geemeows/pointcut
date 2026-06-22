@@ -30,6 +30,11 @@ import { createSpacingModel } from '../models/spacing.mjs';
 import { createColorModel } from '../models/color.mjs';
 import { createTypographyModel } from '../models/typography.mjs';
 import { createCopyModel } from '../models/copy.mjs';
+import {
+  describeChanges, parseIntent, designText, copyText as copyChangeText,
+  INTENT_OPTIONS, propertiesForIntent, defaultPropertyForIntent,
+  isDesignChangeValid, toEditableDesign, toEditableCopy, editsFromEditable,
+} from '../models/changes.mjs';
 import { createChat } from '../models/chat.mjs';
 // @ts-ignore — .mjs sibling, typed structurally.
 import { renderMarkdown } from '../models/markdown.mjs';
@@ -524,16 +529,6 @@ export function mount() {
       .crow-act:hover { background: rgba(182,250,5,.14); border-color: rgba(182,250,5,.5); }
       .crow-act.danger { color: #ff8d8d; border-color: rgba(255,90,90,.3); background: rgba(255,90,90,.06); }
       .crow-act.danger:hover { background: rgba(255,90,90,.14); border-color: rgba(255,90,90,.5); color: #ffa3a3; }
-      /* Titled comment block — popover keeps the left-rail blockquote look. */
-      .comment-title {
-        font-size: 11px; font-weight: 600; letter-spacing: .03em; text-transform: uppercase;
-        color: #8b93a1; margin-bottom: 6px;
-      }
-      .body {
-        margin: 0; font-size: 13px; line-height: 1.5; white-space: pre-wrap; word-break: break-word;
-        color: #e7e9ee; border-left: 3px solid rgba(255,255,255,.16); background: rgba(255,255,255,.035);
-        border-radius: 0 7px 7px 0; padding: 8px 11px;
-      }
       /* Drawer comment body — plain text panel below the head divider. */
       .crow-body {
         margin: 0; font-size: 14px; line-height: 1.5; white-space: pre-wrap; word-break: break-word;
@@ -812,11 +807,6 @@ export function mount() {
         line-height: 1.4; resize: vertical; min-height: 40px;
       }
       .cp-text:focus { border-color: var(--pc-accent); box-shadow: 0 0 0 2px rgba(182,250,5,.12); }
-      .pop-head { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
-      .pop-head .src { margin-bottom: 0; min-width: 0; flex: 1; }
-      .popover .comment { margin-bottom: 14px; }
-      .actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; margin-top: 12px; }
-      .act-right { display: flex; align-items: center; gap: 8px; margin-left: auto; }
       /* 6. Footer — no drag handle; a quiet comment (save-to-queue) and one
          bright, compact Send, both flush right. */
       .note-foot { display: flex; align-items: center; justify-content: flex-end; gap: 8px; height: 36px; }
@@ -835,27 +825,167 @@ export function mount() {
       }
       .foot-send:hover { background: var(--pc-accent-hover); }
       .foot-send svg { width: 14px; height: 14px; display: block; }
-      /* Icon buttons with hover tooltip (popover + drawer rows) */
-      .act {
-        all: unset; box-sizing: border-box; cursor: pointer; position: relative;
-        display: inline-flex; align-items: center; justify-content: center;
-        width: 34px; height: 34px; border-radius: 9px; background: #2a2c30; color: #e7e9ee;
+      /* Saved comment card — the saved-instruction surface that opens on a
+         comment's pin. Same compact dark bubble as the note inspector; the three
+         modes (view / edit / delete-confirm) are switched by [data-mode]. */
+      .panel.saved-card {
+        --nb-bg: #11161D; --nb-surface: #151A21; --nb-surface-2: #0D1117; --nb-surface-3: #1B222B;
+        --nb-border: #2A3440; --nb-text: #F4F7FB; --nb-text-2: #B6BEC9; --nb-muted: #7D8793;
+        width: 456px; max-width: calc(100vw - 24px); padding: 14px; border-radius: 14px;
+        display: none; flex-direction: column; gap: 10px;
+        background: var(--nb-bg); border: 1px solid var(--nb-border); color: var(--nb-text);
+        box-shadow: 0 18px 42px rgba(0,0,0,.34);
+      }
+      /* positionPopover() forces an inline display:block; carry the row rhythm on
+         adjacent-sibling margins so the column gap survives (as the note does). */
+      .panel.saved-card > * + * { margin-top: 10px; }
+      .sc-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 22px; }
+      .sc-head .src {
+        height: 22px; padding: 0 8px; margin-bottom: 0; min-width: 0; border-radius: 7px;
+        background: var(--nb-surface-3); color: var(--nb-text-2); font-size: 11px;
+      }
+      .sc-head .src svg { opacity: .8; }
+      .sc-head .src.linkable:hover { color: var(--pc-accent); background: var(--nb-surface-3); }
+      .sc-head-actions { display: flex; align-items: center; gap: 6px; flex: none; }
+      .sc-badge {
+        height: 22px; padding: 0 8px; border-radius: 999px; display: inline-flex; align-items: center;
+        font-size: 11px; font-weight: 700;
+      }
+      .sc-badge[data-kind="saved"] { background: rgba(182,250,5,.08); border: 1px solid rgba(182,250,5,.35); color: var(--pc-accent); }
+      .sc-badge[data-kind="editing"] { background: rgba(120,150,255,.10); border: 1px solid rgba(120,150,255,.35); color: #B9C6FF; }
+      .sc-badge[data-kind="delete"] { background: rgba(255,107,107,.10); border: 1px solid rgba(255,107,107,.35); color: #FF8A8A; }
+      .sc-menu-wrap { position: relative; flex: none; }
+      .sc-overflow {
+        all: unset; box-sizing: border-box; cursor: pointer; width: 24px; height: 24px; border-radius: 7px;
+        display: inline-flex; align-items: center; justify-content: center; background: transparent;
+        border: 1px solid transparent; color: var(--nb-muted); transition: background .12s, color .12s, border-color .12s;
+      }
+      .sc-overflow:hover { background: var(--nb-surface-3); border-color: var(--nb-border); color: var(--nb-text); }
+      .sc-overflow svg { width: 16px; height: 16px; }
+      .sc-menu {
+        position: absolute; top: calc(100% + 6px); right: 0; display: none; flex-direction: column; gap: 1px;
+        min-width: 140px; background: var(--nb-surface); border: 1px solid var(--nb-border); border-radius: 10px;
+        padding: 5px; z-index: 7; box-shadow: 0 12px 30px rgba(0,0,0,.45);
+      }
+      .sc-menu.open { display: flex; }
+      .sc-menu-item {
+        all: unset; box-sizing: border-box; cursor: pointer; padding: 7px 9px; border-radius: 7px;
+        font-size: 13px; color: var(--nb-text-2); transition: background .1s, color .1s;
+      }
+      .sc-menu-item:hover { background: var(--nb-surface-3); color: var(--nb-text); }
+      .sc-menu-item.danger { color: #FF6B6B; }
+      .sc-menu-item.danger:hover { background: rgba(255,107,107,.1); color: #FF8A8A; }
+      .sc-body { display: flex; flex-direction: column; gap: 10px; }
+      .sc-section { display: flex; flex-direction: column; gap: 6px; }
+      .sc-label { font-size: 10px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: var(--nb-muted); }
+      .sc-note {
+        padding: 10px 12px; border-radius: 10px; background: var(--nb-surface-2); border: 1px solid var(--nb-border);
+        color: var(--nb-text); font-size: 13px; line-height: 18px; white-space: pre-wrap; overflow-wrap: anywhere;
+      }
+      /* Compact auto-growing note input: rests at one line (~52px) and grows
+         only when the text wraps (height driven by JS up to the max). Scoped
+         under .saved-card to outrank the generic .panel textarea rule. */
+      .saved-card .sc-note-input {
+        all: unset; box-sizing: border-box; width: 100%; min-height: 52px; max-height: 140px; padding: 10px 12px;
+        border-radius: 10px; background: var(--nb-surface-2); border: 1px solid var(--nb-border); color: var(--nb-text);
+        font: inherit; font-size: 13px; line-height: 18px; resize: none; overflow-y: auto;
+      }
+      .saved-card .sc-note-input:focus { border-color: var(--pc-accent); box-shadow: 0 0 0 2px rgba(182,250,5,.08); }
+      .saved-card .sc-note-input::placeholder { color: var(--nb-muted); }
+      .sc-changes {
+        padding: 10px; border-radius: 10px; background: var(--nb-surface); border: 1px solid var(--nb-border);
+        display: flex; flex-direction: column; gap: 8px;
+      }
+      .sc-change-row { display: grid; grid-template-columns: 64px 1fr; gap: 10px; align-items: center; min-height: 22px; font-size: 12px; }
+      /* Lightweight metadata labels — not chunky tab-like pills. */
+      .sc-chip {
+        height: 20px; padding: 0 7px; border-radius: 6px; display: inline-flex; align-items: center; justify-content: center;
+        font-size: 11px; font-weight: 800; line-height: 1; white-space: nowrap;
+      }
+      .sc-chip[data-type="design"] { background: rgba(182,250,5,.08); color: var(--pc-accent); border: 1px solid rgba(182,250,5,.28); }
+      .sc-chip[data-type="copy"] { background: rgba(120,150,255,.08); color: #B9C6FF; border: 1px solid rgba(120,150,255,.25); }
+      .sc-change-text { color: var(--nb-text-2); font-size: 12px; line-height: 16px; min-width: 0; overflow-wrap: anywhere; }
+      /* CHANGE EDITOR (edit mode) — editable design + copy lanes. A collapsed
+         lane is a full-width clickable row; clicking expands an inline editor. */
+      .saved-card .sc-ed-collapsed {
+        all: unset; box-sizing: border-box; cursor: pointer; width: 100%;
+        display: grid; grid-template-columns: 64px 1fr auto; gap: 10px; align-items: center;
+        min-height: 26px; padding: 2px 0; border-radius: 8px;
+      }
+      .saved-card .sc-ed-collapsed:hover { background: var(--nb-surface-3); }
+      .sc-ed-afford { color: var(--nb-muted); font-size: 12px; font-weight: 700; white-space: nowrap; padding-right: 2px; }
+      .sc-ed-collapsed:hover .sc-ed-afford { color: var(--nb-text); }
+      .sc-design-editor, .sc-copy-editor {
+        padding: 8px; border-radius: 10px; background: #0D1117; border: 1px solid #2A3440;
+        display: flex; flex-direction: column; gap: 8px;
+      }
+      .sc-ed-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+      .sc-ed-controls { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+      .sc-ed-valuerow { display: grid; grid-template-columns: 1fr; gap: 8px; }
+      .sc-ed-valuerow.has-custom { grid-template-columns: 1fr 1fr; }
+      .sc-ed-actions { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+      .saved-card .sc-ed-select {
+        -webkit-appearance: none; appearance: none; box-sizing: border-box; width: 100%; height: 34px;
+        padding: 0 26px 0 10px; border-radius: 8px; background-color: #11161D; border: 1px solid var(--nb-border);
+        color: var(--nb-text); font: inherit; font-size: 13px; cursor: pointer;
+        background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%237D8793' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='m6 9 6 6 6-6'/></svg>");
+        background-repeat: no-repeat; background-position: right 9px center;
+      }
+      .saved-card .sc-ed-select:focus { outline: none; border-color: var(--pc-accent); }
+      .saved-card .sc-ed-select option { background: #11161D; color: var(--nb-text); }
+      .saved-card .sc-ed-input {
+        all: unset; box-sizing: border-box; width: 100%; height: 34px; padding: 0 10px; border-radius: 8px;
+        background: #11161D; border: 1px solid var(--nb-border); color: var(--nb-text); font: inherit; font-size: 13px;
+      }
+      .saved-card .sc-ed-input:focus { border-color: var(--pc-accent); box-shadow: 0 0 0 2px rgba(182,250,5,.08); }
+      .saved-card .sc-ed-input::placeholder { color: var(--nb-muted); }
+      .sc-current-copy { color: #7D8793; font-size: 12px; line-height: 16px; overflow-wrap: anywhere; }
+      .sc-ed-linkbtn {
+        all: unset; box-sizing: border-box; cursor: pointer; font-size: 12px; font-weight: 700;
+        color: var(--nb-text-2); padding: 4px 6px; border-radius: 6px;
+      }
+      .sc-ed-linkbtn:hover { color: var(--nb-text); background: var(--nb-surface-3); }
+      .sc-ed-linkbtn.danger { color: #FF8A8A; }
+      .sc-ed-linkbtn.danger:hover { background: rgba(255,107,107,.1); }
+      .sc-ed-warn { font-size: 12px; line-height: 16px; color: #FF8A8A; }
+      .sc-delete-block {
+        padding: 10px 12px; border-radius: 10px; background: rgba(255,107,107,.08); border: 1px solid rgba(255,107,107,.28);
+        display: flex; flex-direction: column; gap: 4px;
+      }
+      .sc-delete-title { font-size: 10px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: #FF8A8A; }
+      .sc-delete-msg { font-size: 13px; line-height: 18px; color: var(--nb-text-2); }
+      .sc-delete-extra { display: none; font-size: 12px; line-height: 16px; color: var(--nb-muted); }
+      .sc-foot { display: flex; align-items: center; justify-content: flex-end; gap: 8px; min-height: 36px; }
+      .sc-btn-edit, .sc-btn-cancel {
+        all: unset; box-sizing: border-box; cursor: pointer; height: 36px; padding: 0 12px; border-radius: 10px;
+        background: var(--nb-surface-3); border: 1px solid var(--nb-border); color: var(--nb-text-2);
+        font-size: 13px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center;
         transition: background .12s, color .12s;
       }
-      .act:hover { background: #363940; }
-      .act svg { width: 16px; height: 16px; }
-      .act.primary { background: var(--pc-accent); color: var(--pc-ink); }
-      .act.primary:hover { background: var(--pc-accent-hover); }
-      .act.danger { background: transparent; color: #ff8d8d; }
-      .act.danger:hover { background: rgba(255,90,90,.12); }
-      .act::after {
-        content: attr(data-tip); position: absolute; bottom: calc(100% + 8px); left: 50%;
-        transform: translateX(-50%) translateY(2px);
-        background: #0c0d0f; color: #fff; font-size: 11px; font-weight: 500; line-height: 1;
-        padding: 5px 8px; border-radius: 6px; white-space: nowrap; opacity: 0; pointer-events: none;
-        transition: opacity .12s, transform .12s; box-shadow: 0 4px 14px rgba(0,0,0,.45);
+      .sc-btn-edit:hover, .sc-btn-cancel:hover { background: #222b35; color: var(--nb-text); }
+      .sc-btn-send, .sc-btn-save {
+        all: unset; box-sizing: border-box; cursor: pointer; height: 36px; padding: 0 14px; min-width: 88px; border-radius: 10px;
+        background: var(--pc-accent); color: var(--pc-ink); font-size: 13px; font-weight: 800;
+        display: inline-flex; align-items: center; justify-content: center; gap: 7px; transition: background .12s, opacity .12s;
       }
-      .act:hover::after { opacity: 1; transform: translateX(-50%) translateY(0); }
+      .sc-btn-send:hover, .sc-btn-save:hover { background: var(--pc-accent-hover); }
+      .sc-btn-save[disabled] { opacity: .45; cursor: not-allowed; }
+      .sc-btn-delete {
+        all: unset; box-sizing: border-box; cursor: pointer; height: 36px; padding: 0 14px; border-radius: 10px;
+        background: #FF6B6B; color: #190707; font-size: 13px; font-weight: 800;
+        display: inline-flex; align-items: center; justify-content: center;
+      }
+      .sc-btn-delete:hover { background: #FF8A8A; }
+      /* Mode visibility — a single [data-mode] drives which body + footer show. */
+      .saved-card .sc-foot { display: none; }
+      .saved-card[data-mode="view"] .sc-foot-view { display: flex; }
+      .saved-card[data-mode="edit"] .sc-foot-edit { display: flex; }
+      .saved-card[data-mode="delete-confirm"] .sc-foot-delete { display: flex; }
+      .saved-card[data-mode="view"] .sc-note-input,
+      .saved-card[data-mode="delete-confirm"] .sc-note-input { display: none; }
+      .saved-card[data-mode="edit"] .sc-note { display: none; }
+      .saved-card[data-mode="delete-confirm"] .sc-body { display: none; }
+      .saved-card:not([data-mode="delete-confirm"]) .sc-delete-block { display: none; }
       .bubble {
         position: fixed; pointer-events: auto; cursor: pointer;
         width: 22px; height: 22px; border-radius: 50% 50% 50% 2px;
@@ -1140,29 +1270,52 @@ export function mount() {
         </div>
       </div>
 
-      <div class="panel popover">
-        <div class="pop-head">
-          <div class="src">
+      <div class="panel popover saved-card" data-mode="view">
+        <div class="sc-head">
+          <div class="src sc-src">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
             <span class="src-name"></span>
           </div>
-        </div>
-        <div class="comment">
-          <div class="comment-title">Comment</div>
-          <blockquote class="body"></blockquote>
-        </div>
-        <div class="actions">
-          <button class="act danger" data-act="delete" data-tip="Delete">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M10 11v6M14 11v6"/></svg>
-          </button>
-          <div class="act-right">
-            <button class="act" data-act="edit" data-tip="Edit">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
-            </button>
-            <button class="act primary" data-act="send-agent" data-tip="Send to agent">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/><path d="M20 3v4"/><path d="M22 5h-4"/><path d="M4 17v2"/><path d="M5 18H3"/></svg>
-            </button>
+          <div class="sc-head-actions">
+            <span class="sc-badge" data-kind="saved">Saved</span>
+            <div class="sc-menu-wrap">
+              <button class="sc-overflow" data-act="sc-menu" type="button" aria-label="Comment actions" aria-haspopup="true" aria-expanded="false">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg>
+              </button>
+              <div class="sc-menu" role="menu">
+                <button class="sc-menu-item" data-act="sc-duplicate" type="button" role="menuitem">Duplicate</button>
+                <button class="sc-menu-item danger" data-act="sc-delete" type="button" role="menuitem" aria-label="Delete saved comment">Delete</button>
+              </div>
+            </div>
           </div>
+        </div>
+        <div class="sc-body">
+          <div class="sc-section">
+            <div class="sc-label">User note</div>
+            <div class="sc-note"></div>
+            <textarea class="sc-note-input" rows="1" placeholder="Describe the change…" aria-label="Saved comment note"></textarea>
+          </div>
+          <div class="sc-section">
+            <div class="sc-label sc-changes-label">Changes</div>
+            <div class="sc-changes"></div>
+          </div>
+        </div>
+        <div class="sc-delete-block">
+          <div class="sc-delete-title">Delete comment</div>
+          <div class="sc-delete-msg">This saved instruction will be removed.</div>
+          <div class="sc-delete-extra">Unsaved edits will be discarded.</div>
+        </div>
+        <div class="sc-foot sc-foot-view">
+          <button class="sc-btn-edit" data-act="sc-edit" type="button" aria-label="Edit saved comment">Edit</button>
+          <button class="sc-btn-send" data-act="sc-send" type="button" aria-label="Send saved comment to agent">Send</button>
+        </div>
+        <div class="sc-foot sc-foot-edit">
+          <button class="sc-btn-cancel" data-act="sc-cancel-edit" type="button">Cancel</button>
+          <button class="sc-btn-save" data-act="sc-save" type="button" aria-label="Save saved comment">Save</button>
+        </div>
+        <div class="sc-foot sc-foot-delete">
+          <button class="sc-btn-cancel" data-act="sc-cancel-delete" type="button" aria-label="Cancel delete">Cancel</button>
+          <button class="sc-btn-delete" data-act="sc-confirm-delete" type="button" aria-label="Confirm delete comment">Delete</button>
         </div>
       </div>
 
@@ -1388,8 +1541,16 @@ export function mount() {
   const ctlTray = note.querySelector('.ctl-tray'); // contextual controls; shown only when controlsOpen
 
   const popover = $('.popover');
-  const popSrc = popover.querySelector('.src');
-  const popBody = popover.querySelector('.body');
+  const popSrc = popover.querySelector('.sc-src');
+  const popMenu = popover.querySelector('.sc-menu');
+  const popOverflow = popover.querySelector('.sc-overflow');
+  const popBadge = popover.querySelector('.sc-badge');
+  const popNote = popover.querySelector('.sc-note');
+  const popNoteInput = popover.querySelector('.sc-note-input');
+  const popChanges = popover.querySelector('.sc-changes');
+  const popChangesLabel = popover.querySelector('.sc-changes-label');
+  const popDeleteExtra = popover.querySelector('.sc-delete-extra');
+  const popSave = popover.querySelector('.sc-btn-save');
 
   let picking = false;
   // What a pick does on click: 'comment' (open a note — the toolbar Pick) or
@@ -1441,6 +1602,14 @@ export function mount() {
   let selectedType = TYPES[0].id;
   let openPopId = null;
   let popSide = null; // latched vertical side of the open popover (see placeBeside)
+  let popMode = 'view'; // 'view' | 'edit' | 'delete-confirm'
+  let popReturnMode = 'view'; // where Cancel in delete-confirm returns to
+  // Edit-mode working copy of the card's note + interpreted changes. Built on
+  // enterCardEdit, mutated by the CHANGE EDITOR controls, persisted on Save and
+  // dropped on Cancel. null outside edit mode. Shape:
+  //   { note, design: EditableDesignChange, copy: EditableCopyChange,
+  //     designOpen, copyOpen, designCustom } (see models/changes.mjs).
+  let popDraft = null;
   let drawerOpen = false;
 
   // Compact source label: filename:line:col, with the full path on hover. The
@@ -2032,20 +2201,529 @@ export function mount() {
     popSide = placeBeside(popover, bubble ? bubble.getBoundingClientRect() : r, 'right', popSide);
   };
 
+  const closePopMenu = () => {
+    popMenu.classList.remove('open');
+    popOverflow.setAttribute('aria-expanded', 'false');
+  };
+
+  // Resolve the read-only {designChange, copyChange} pair for VIEW mode: prefer
+  // the structured edits[] captured by the inspector (or saved by the editor),
+  // falling back to parsing the saved comment when none were captured.
+  const changesToShow = () => {
+    const a = Q.get(openPopId);
+    if (!a) return null;
+    if (a.edits && a.edits.length) return describeChanges(a);
+    return parseIntent(a.comment);
+  };
+
+  // ---- CHANGE EDITOR value vocabulary (edit mode) -------------------------
+  // The value control's options come from the project's own tokens (ADR 0001 —
+  // introspected live, never hard-coded names) plus universal literal presets so
+  // there's always a sensible choice even when a project ships no tokens. The
+  // token names also gate validation: a token is only offered for the lane whose
+  // pool it lives in, so an out-of-lane token can't be selected or saved.
+  const LENGTH_PRESETS = ['4px', '8px', '12px', '16px', '24px'];
+  const FONTSIZE_PRESETS = ['14px', '16px', '20px'];
+  const WEIGHT_PRESETS = ['400', '500', '600', '700'];
+  const LINEHEIGHT_PRESETS = ['1', '1.25', '1.5', '1.75'];
+  const COLOR_PRESETS = ['#EF4444', '#3B82F6', '#22C55E', '#111827', '#FFFFFF'];
+
+  // The introspected token names eligible for a property's value (used to gate
+  // validation). Empty when the project ships no tokens of that type.
+  const designPoolNames = (property) => {
+    const names = (list) => list.map((t) => t.name);
+    switch (property) {
+      case 'padding': case 'margin': case 'gap': return names(tokens.spacingScale());
+      case 'fill': case 'textColor': case 'borderColor': return tokens.colorRamp().map((t) => t.name);
+      case 'fontSize': return names(tokens.fontSizeScale());
+      case 'fontWeight': return names(tokens.fontWeightScale());
+      case 'lineHeight': return names(tokens.fontLineHeightScale());
+      default: return [];
+    }
+  };
+
+  // Selectable value options for a property: project tokens first (as
+  // "--name · value"), then literal presets, then a Custom… escape hatch.
+  const designValueOptions = (property) => {
+    const opts = [];
+    const seen = new Set();
+    const push = (value, label) => {
+      if (!value || seen.has(value)) return;
+      seen.add(value);
+      opts.push({ value, label: label || value });
+    };
+    const tokenOpts = (list) => list.forEach((t) => push(`${t.name} · ${t.value}`));
+    switch (property) {
+      case 'padding': case 'margin': case 'gap':
+        tokenOpts(tokens.spacingScale()); LENGTH_PRESETS.forEach((v) => push(v)); break;
+      case 'fontSize':
+        tokenOpts(tokens.fontSizeScale()); FONTSIZE_PRESETS.forEach((v) => push(v)); break;
+      case 'fill': case 'textColor': case 'borderColor':
+        tokens.colorRamp().forEach((t) => push(`${t.name} · ${t.value}`)); COLOR_PRESETS.forEach((v) => push(v)); break;
+      case 'fontWeight':
+        tokenOpts(tokens.fontWeightScale()); WEIGHT_PRESETS.forEach((v) => push(v)); break;
+      case 'lineHeight':
+        tokenOpts(tokens.fontLineHeightScale()); LINEHEIGHT_PRESETS.forEach((v) => push(v)); break;
+    }
+    opts.push({ value: '__custom__', label: 'Custom…' });
+    return opts;
+  };
+
+  // First non-custom option value for a property — the valid default used when a
+  // lane is added or its intent/property changes.
+  const defaultDesignValue = (property) => {
+    const o = designValueOptions(property).find((x) => x.value !== '__custom__');
+    return o ? o.value : '';
+  };
+
+  const isTokenValue = (v) => String(v || '').trim().slice(0, 2) === '--';
+  const customPlaceholder = (property) => {
+    switch (property) {
+      case 'fill': case 'textColor': case 'borderColor': return 'e.g. #FF0000 or red';
+      case 'fontWeight': return 'e.g. 700';
+      case 'lineHeight': return 'e.g. 1.5';
+      default: return 'e.g. 20px';
+    }
+  };
+
+  const mk = (tag, cls, text) => {
+    const n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (text != null) n.textContent = text;
+    return n;
+  };
+  const mkSelect = (field, options, selected) => {
+    const s = mk('select', 'sc-ed-select');
+    s.dataset.field = field;
+    for (const o of options) {
+      const opt = document.createElement('option');
+      opt.value = o.value;
+      opt.textContent = o.label;
+      if (o.value === selected) opt.selected = true;
+      s.append(opt);
+    }
+    return s;
+  };
+  const mkEditorHeader = (type, label) => {
+    const h = mk('div', 'sc-ed-header');
+    const chip = mk('span', 'sc-chip', label);
+    chip.setAttribute('data-type', type);
+    const done = mk('button', 'sc-ed-linkbtn', 'Done');
+    done.type = 'button';
+    done.dataset.act = type === 'design' ? 'ed-design-toggle' : 'ed-copy-toggle';
+    h.append(chip, done);
+    return h;
+  };
+
+  // A collapsed lane: a full-width clickable row that expands its editor. The
+  // affordance reads "+ Add" when nothing is set yet, a pencil when it can be
+  // corrected.
+  const mkCollapsedRow = (type, label, text, status, act) => {
+    const r = mk('button', 'sc-ed-collapsed');
+    r.type = 'button';
+    r.dataset.act = act;
+    const chip = mk('span', 'sc-chip', label);
+    chip.setAttribute('data-type', type);
+    const t = mk('span', 'sc-change-text', text);
+    const detected = status === 'detected';
+    const aff = mk('span', 'sc-ed-afford', detected ? '✎' : '+ Add');
+    r.append(chip, t, aff);
+    return r;
+  };
+
+  const renderDesignEditor = () => {
+    const d = popDraft.design;
+    const wrap = mk('div', 'sc-design-editor');
+    wrap.append(mkEditorHeader('design', 'Design'));
+    const controls = mk('div', 'sc-ed-controls');
+    controls.append(
+      mkSelect('ed-intent', INTENT_OPTIONS.map((o) => ({ value: o.id, label: o.label })), d.intent),
+      mkSelect('ed-property', propertiesForIntent(d.intent).map((o) => ({ value: o.id, label: o.label })), d.property),
+    );
+    wrap.append(controls);
+
+    const valOpts = designValueOptions(d.property);
+    const isCustom = popDraft.designCustom || !valOpts.some((o) => o.value === d.value);
+    const valueRow = mk('div', 'sc-ed-valuerow');
+    valueRow.append(mkSelect('ed-value', valOpts, isCustom ? '__custom__' : d.value));
+    if (isCustom) {
+      valueRow.classList.add('has-custom');
+      const inp = mk('input', 'sc-ed-input');
+      inp.dataset.field = 'ed-value-custom';
+      inp.value = d.value && !isTokenValue(d.value) ? d.value : '';
+      inp.placeholder = customPlaceholder(d.property);
+      valueRow.append(inp);
+    }
+    wrap.append(valueRow);
+
+    const warn = mk('div', 'sc-ed-warn', 'Invalid value for selected intent');
+    warn.dataset.role = 'design-warn';
+    if (isDesignChangeValid(d, designPoolNames(d.property))) warn.style.display = 'none';
+    wrap.append(warn);
+
+    const actions = mk('div', 'sc-ed-actions');
+    const clear = mk('button', 'sc-ed-linkbtn danger', 'Clear design change');
+    clear.type = 'button';
+    clear.dataset.act = 'ed-design-clear';
+    const detect = mk('button', 'sc-ed-linkbtn', popDraft.detecting ? 'Detecting…' : 'Use detected');
+    detect.type = 'button';
+    detect.dataset.act = 'ed-design-detect';
+    actions.append(clear, detect);
+    wrap.append(actions);
+    return wrap;
+  };
+
+  const renderCopyEditor = () => {
+    const c = popDraft.copy;
+    const wrap = mk('div', 'sc-copy-editor');
+    wrap.append(mkEditorHeader('copy', 'Copy'));
+    const cur = c.oldText == null ? 'Current text' : c.oldText;
+    wrap.append(mk('div', 'sc-current-copy', `Current: "${cur}"`));
+    const field = mk('div', 'sc-ed-valuerow');
+    const inp = mk('input', 'sc-ed-input');
+    inp.dataset.field = 'ed-copy-new';
+    inp.value = c.newText || '';
+    inp.placeholder = 'New copy text…';
+    field.append(inp);
+    wrap.append(field);
+    const actions = mk('div', 'sc-ed-actions');
+    const clear = mk('button', 'sc-ed-linkbtn danger', 'Clear copy change');
+    clear.type = 'button';
+    clear.dataset.act = 'ed-copy-clear';
+    const detect = mk('button', 'sc-ed-linkbtn', 'Use detected');
+    detect.type = 'button';
+    detect.dataset.act = 'ed-copy-detect';
+    actions.append(clear, detect);
+    wrap.append(actions);
+    return wrap;
+  };
+
+  // Paint the CHANGE EDITOR (edit mode) from popDraft — collapsed rows or, when
+  // a lane is open, its inline editor.
+  const renderEditor = () => {
+    if (!popDraft) return;
+    const d = popDraft.design;
+    const c = popDraft.copy;
+    popChanges.append(
+      popDraft.designOpen
+        ? renderDesignEditor()
+        : mkCollapsedRow('design', 'Design', designText(d), d.status, 'ed-design-toggle'),
+    );
+    popChanges.append(
+      popDraft.copyOpen
+        ? renderCopyEditor()
+        : mkCollapsedRow('copy', 'Copy', copyChangeText(c), c.status, 'ed-copy-toggle'),
+    );
+  };
+
+  // Paint the changes section. View/delete modes show read-only rows; edit mode
+  // shows the editable CHANGE EDITOR. Rows use textContent so a comment's
+  // wording can never inject markup.
+  const renderChanges = () => {
+    popChanges.textContent = '';
+    if (popMode === 'edit') { renderEditor(); return; }
+    const changes = changesToShow();
+    if (!changes) return;
+    const row = (type, label, text) => {
+      const r = document.createElement('div');
+      r.className = 'sc-change-row';
+      const chip = document.createElement('span');
+      chip.className = 'sc-chip';
+      chip.setAttribute('data-type', type);
+      chip.textContent = label;
+      const t = document.createElement('span');
+      t.className = 'sc-change-text';
+      t.textContent = text;
+      r.append(chip, t);
+      return r;
+    };
+    popChanges.append(
+      row('design', 'Design', designText(changes.designChange)),
+      row('copy', 'Copy', copyChangeText(changes.copyChange)),
+    );
+  };
+
+  // Save is gated on a non-empty note AND a valid design lane (an out-of-lane
+  // token disables Save until corrected).
+  const updateCardSave = () => {
+    if (!popDraft) { popSave.disabled = !popNoteInput.value.trim(); return; }
+    const noteOk = !!popNoteInput.value.trim();
+    const designOk = isDesignChangeValid(popDraft.design, designPoolNames(popDraft.design.property));
+    popSave.disabled = !(noteOk && designOk);
+  };
+
+  // Re-render the editor and resize/reposition (an expand or add changes height).
+  const rerenderEditor = () => {
+    renderChanges();
+    updateCardSave();
+    positionPopover();
+  };
+
+  // Size the edit textarea to its content: rest at the one-line min, grow with
+  // wrapped lines up to the CSS max-height (then it scrolls).
+  const autoGrowNote = () => {
+    popNoteInput.style.height = 'auto';
+    popNoteInput.style.height = Math.min(popNoteInput.scrollHeight, 140) + 'px';
+  };
+
+  // Reflect popMode onto the card: the data-mode attr drives CSS visibility;
+  // here we set the badge, the changes-section label, the delete message and
+  // the editable note's seed/disabled state.
+  const renderSavedCard = () => {
+    const a = Q.get(openPopId);
+    if (!a) return;
+    popover.setAttribute('data-mode', popMode);
+    fillSrc(popSrc, a.loc);
+    popNote.textContent = a.comment;
+    if (popMode === 'edit') {
+      popBadge.setAttribute('data-kind', 'editing');
+      popBadge.textContent = 'Editing';
+      popChangesLabel.textContent = 'Change editor';
+    } else if (popMode === 'delete-confirm') {
+      popBadge.setAttribute('data-kind', 'delete');
+      popBadge.textContent = 'Delete?';
+      // The base "will be removed" line is static; only warn about a draft when
+      // the confirm was raised from edit mode.
+      popDeleteExtra.style.display = popReturnMode === 'edit' ? 'block' : 'none';
+    } else {
+      popBadge.setAttribute('data-kind', 'saved');
+      popBadge.textContent = 'Saved';
+      popChangesLabel.textContent = 'Changes';
+    }
+    renderChanges();
+  };
+
   const openPopover = (id) => {
     const a = Q.get(id);
     if (!a) return;
     openPopId = id;
     popSide = null; // recompute the side fresh for this open
-    fillSrc(popSrc, a.loc);
-    popBody.textContent = a.comment;
+    popMode = 'view';
+    popDraft = null;
+    closePopMenu();
+    renderSavedCard();
     popover.style.display = 'block';
     positionPopover();
   };
 
   const closePopover = () => {
     openPopId = null;
+    popMode = 'view';
+    popDraft = null;
+    closePopMenu();
     popover.style.display = 'none';
+  };
+
+  // In-card edit: seed the draft (note + interpreted design/copy changes) and
+  // swap into the CHANGE EDITOR. The draft prefers the structured edits[] when
+  // present, else the intent parsed from the note. (Distinct from editAnnotation,
+  // which reopens the full inspector note panel from the drawer's comment rows.)
+  const enterCardEdit = () => {
+    if (!openPopId) return;
+    closePopMenu();
+    const a = Q.get(openPopId);
+    if (!a) return;
+    popMode = 'edit';
+    popNoteInput.value = a.comment || '';
+    const base = a.edits && a.edits.length ? describeChanges(a) : parseIntent(a.comment);
+    popDraft = {
+      note: a.comment || '',
+      design: toEditableDesign(base.designChange, 'auto-detected'),
+      copy: toEditableCopy(base.copyChange, 'auto-detected'),
+      designOpen: false,
+      copyOpen: false,
+      designCustom: false,
+      detecting: false,
+    };
+    renderSavedCard();
+    updateCardSave();
+    autoGrowNote();
+    positionPopover();
+    popNoteInput.focus();
+  };
+
+  const cancelCardEdit = () => {
+    popMode = 'view';
+    popDraft = null; // discard the draft note + change edits
+    renderSavedCard();
+    positionPopover();
+  };
+
+  const saveCardEdit = () => {
+    const a = Q.get(openPopId);
+    const next = popNoteInput.value.trim();
+    if (!a || !next || popSave.disabled) {
+      popNoteInput.focus();
+      return;
+    }
+    a.comment = next;
+    // Persist the edited interpreted changes alongside the note. An empty result
+    // means both lanes were cleared — drop edits[] so view mode re-parses fresh.
+    const edits = popDraft ? editsFromEditable(popDraft.design, popDraft.copy) : [];
+    if (edits.length) a.edits = edits;
+    else delete a.edits;
+    Q.persist();
+    renderBubbles();
+    if (drawerOpen) renderDrawer();
+    popMode = 'view';
+    popDraft = null;
+    renderSavedCard();
+    positionPopover();
+  };
+
+  const enterDeleteConfirm = () => {
+    closePopMenu();
+    popReturnMode = popMode === 'edit' ? 'edit' : 'view';
+    popMode = 'delete-confirm';
+    renderSavedCard();
+    positionPopover();
+  };
+
+  const cancelDeleteConfirm = () => {
+    popMode = popReturnMode;
+    renderSavedCard();
+    if (popMode === 'edit') updateCardSave();
+    positionPopover();
+  };
+
+  // ---- CHANGE EDITOR interactions -----------------------------------------
+
+  const toggleDesignEditor = () => {
+    if (!popDraft) return;
+    if (popDraft.designOpen) {
+      popDraft.designOpen = false;
+    } else {
+      // "+ Add" (nothing set yet) seeds a valid default; the pencil just expands.
+      if (popDraft.design.status !== 'detected') {
+        popDraft.design = {
+          source: 'manual', intent: 'spacing', property: 'padding',
+          value: defaultDesignValue('padding'), status: 'detected',
+        };
+        popDraft.designCustom = false;
+      }
+      popDraft.designOpen = true;
+    }
+    rerenderEditor();
+  };
+
+  const toggleCopyEditor = () => {
+    if (!popDraft) return;
+    if (popDraft.copyOpen) {
+      popDraft.copyOpen = false;
+    } else {
+      if (popDraft.copy.status !== 'detected') {
+        popDraft.copy = { source: 'manual', oldText: popDraft.copy.oldText, newText: '', status: 'detected' };
+      }
+      popDraft.copyOpen = true;
+    }
+    rerenderEditor();
+  };
+
+  const clearDesignChange = () => {
+    if (!popDraft) return;
+    popDraft.design = { source: 'manual', intent: null, property: null, value: null, status: 'no-change' };
+    popDraft.designCustom = false;
+    popDraft.designOpen = false;
+    rerenderEditor();
+  };
+
+  const clearCopyChange = () => {
+    if (!popDraft) return;
+    popDraft.copy = { source: 'manual', oldText: popDraft.copy.oldText, newText: null, status: 'no-change' };
+    popDraft.copyOpen = false;
+    rerenderEditor();
+  };
+
+  // Re-run detection from the current note text and adopt the result (source
+  // back to auto-detected). Stays expanded only when something was detected.
+  const useDetectedDesign = () => {
+    if (!popDraft) return;
+    const parsed = parseIntent(popNoteInput.value);
+    popDraft.design = toEditableDesign(parsed.designChange, 'auto-detected');
+    popDraft.designCustom = false;
+    popDraft.designOpen = popDraft.design.status === 'detected';
+    rerenderEditor();
+  };
+
+  const useDetectedCopy = () => {
+    if (!popDraft) return;
+    const parsed = parseIntent(popNoteInput.value);
+    popDraft.copy = toEditableCopy(parsed.copyChange, 'auto-detected');
+    popDraft.copyOpen = popDraft.copy.status === 'detected';
+    rerenderEditor();
+  };
+
+  // A select/intent/property/value change. Manual edits flip the lane's source
+  // so note-text detection no longer overwrites it.
+  const onEditorFieldChange = (field, value) => {
+    if (!popDraft) return;
+    const d = popDraft.design;
+    if (field === 'ed-intent') {
+      d.intent = value;
+      d.property = defaultPropertyForIntent(value);
+      d.value = defaultDesignValue(d.property);
+      d.source = 'manual';
+      d.status = 'detected';
+      popDraft.designCustom = false;
+      rerenderEditor();
+    } else if (field === 'ed-property') {
+      d.property = value;
+      d.value = defaultDesignValue(value);
+      d.source = 'manual';
+      d.status = 'detected';
+      popDraft.designCustom = false;
+      rerenderEditor();
+    } else if (field === 'ed-value') {
+      d.source = 'manual';
+      d.status = 'detected';
+      if (value === '__custom__') {
+        popDraft.designCustom = true;
+        d.value = '';
+      } else {
+        popDraft.designCustom = false;
+        d.value = value;
+      }
+      rerenderEditor();
+    }
+  };
+
+  // Text input (custom value / new copy) — update the draft without re-rendering
+  // so focus and caret survive; just refresh the warning + Save state.
+  const onEditorFieldInput = (field, value) => {
+    if (!popDraft) return;
+    if (field === 'ed-value-custom') {
+      popDraft.design.source = 'manual';
+      popDraft.design.status = 'detected';
+      popDraft.design.value = value;
+      const warn = popChanges.querySelector('[data-role="design-warn"]');
+      if (warn) {
+        const ok = isDesignChangeValid(popDraft.design, designPoolNames(popDraft.design.property));
+        warn.style.display = ok ? 'none' : '';
+      }
+      updateCardSave();
+    } else if (field === 'ed-copy-new') {
+      popDraft.copy.source = 'manual';
+      popDraft.copy.status = 'detected';
+      popDraft.copy.newText = value;
+      updateCardSave();
+    }
+  };
+
+  // Clone a saved comment (including its captured edits) as a new queue entry
+  // bound to the same live element, then open the dupe's card.
+  const duplicateAnnotation = (id) => {
+    const a = Q.get(id);
+    if (!a) return;
+    closePopMenu();
+    const copy = { ...a, id: Q.newId(), createdAt: Date.now(), replies: [] };
+    if (Array.isArray(a.edits)) copy.edits = a.edits.map((e) => ({ ...e }));
+    if (a.region) copy.region = { ...a.region };
+    Q.add(copy);
+    const el = !a.region ? locator.resolve(a) : null;
+    if (el) locator.remember(copy.id, el);
+    refreshCount();
+    renderBubbles();
+    openPopover(copy.id);
   };
 
   const editAnnotation = (id) => {
@@ -2728,8 +3406,13 @@ export function mount() {
     // itself or a bubble (the bubble's own handler toggles it).
     if (openPopId != null) {
       const path = e.composedPath();
-      if (!path.includes(popover) && !path.some((n) => n.classList && n.classList.contains('bubble'))) {
-        closePopover();
+      const onCard = path.includes(popover);
+      if (!onCard && !path.some((n) => n.classList && n.classList.contains('bubble'))) {
+        // Only the calm read-only view dismisses on click-away; edit and
+        // delete-confirm hold open so an accidental click can't discard a draft.
+        if (popMode === 'view') closePopover();
+      } else if (onCard && !path.includes(popMenu) && !path.includes(popOverflow)) {
+        closePopMenu(); // a click inside the card but off the menu closes it
       }
     }
     // Click-away closes an open note (discarding it) — unless the press lands on
@@ -3314,18 +3997,80 @@ export function mount() {
   });
 
   popover.addEventListener('click', (e) => {
+    // The linkable source pill opens the editor (not a data-act button).
+    if (e.target.closest('.sc-src.linkable')) { openInEditor(popSrc.dataset.loc); return; }
     const btn = e.target.closest('button[data-act]');
     if (!btn) return;
     const act = btn.dataset.act;
-    if (act === 'delete') deleteAnnotation(openPopId);
-    else if (act === 'edit') editAnnotation(openPopId);
-    else if (act === 'send-agent') {
+    if (act === 'sc-menu') {
+      const open = popMenu.classList.toggle('open');
+      popOverflow.setAttribute('aria-expanded', open ? 'true' : 'false');
+    } else if (act === 'sc-duplicate') {
+      duplicateAnnotation(openPopId);
+    } else if (act === 'sc-delete') {
+      enterDeleteConfirm();
+    } else if (act === 'sc-edit') {
+      enterCardEdit();
+    } else if (act === 'sc-cancel-edit') {
+      cancelCardEdit();
+    } else if (act === 'sc-save') {
+      saveCardEdit();
+    } else if (act === 'sc-cancel-delete') {
+      cancelDeleteConfirm();
+    } else if (act === 'sc-confirm-delete') {
+      deleteAnnotation(openPopId);
+    } else if (act === 'sc-send') {
       const a = Q.get(openPopId);
       closePopover();
       if (a) runAgent({ annotations: [a], note: '', surface: 'panel' });
+    } else if (act === 'ed-design-toggle') {
+      toggleDesignEditor();
+    } else if (act === 'ed-copy-toggle') {
+      toggleCopyEditor();
+    } else if (act === 'ed-design-clear') {
+      clearDesignChange();
+    } else if (act === 'ed-copy-clear') {
+      clearCopyChange();
+    } else if (act === 'ed-design-detect') {
+      useDetectedDesign();
+    } else if (act === 'ed-copy-detect') {
+      useDetectedCopy();
     }
   });
-  popSrc.addEventListener('click', () => openInEditor(popSrc.dataset.loc));
+  // CHANGE EDITOR selects (intent / property / value) — a committed choice.
+  popover.addEventListener('change', (e) => {
+    const f = e.target.closest('[data-field]');
+    if (f) onEditorFieldChange(f.dataset.field, f.value);
+  });
+  // CHANGE EDITOR text inputs (custom value / new copy) — live, focus-preserving.
+  popover.addEventListener('input', (e) => {
+    const f = e.target.closest('input[data-field]');
+    if (f) onEditorFieldInput(f.dataset.field, f.value);
+  });
+  popNoteInput.addEventListener('input', () => {
+    // Note-text detection refreshes only lanes the user hasn't taken over
+    // manually (source still 'auto-detected'); a manual lane is left intact.
+    if (popMode === 'edit' && popDraft) {
+      popDraft.note = popNoteInput.value;
+      const parsed = parseIntent(popNoteInput.value);
+      if (popDraft.design.source === 'auto-detected') {
+        popDraft.design = toEditableDesign(parsed.designChange, 'auto-detected');
+        if (popDraft.design.status !== 'detected') popDraft.designOpen = false;
+      }
+      if (popDraft.copy.source === 'auto-detected') {
+        popDraft.copy = toEditableCopy(parsed.copyChange, 'auto-detected');
+        if (popDraft.copy.status !== 'detected') popDraft.copyOpen = false;
+      }
+    }
+    renderChanges(); // re-paint the CHANGE EDITOR from the refreshed draft
+    updateCardSave();
+    autoGrowNote();
+    positionPopover(); // height may have changed
+  });
+  popNoteInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) saveCardEdit();
+    else if (e.key === 'Escape') { e.stopPropagation(); cancelCardEdit(); }
+  });
 
   bubblesWrap.addEventListener('click', (e) => {
     const b = e.target.closest('.bubble');
@@ -3356,9 +4101,13 @@ export function mount() {
       if (pickers.some((p) => p.menu.classList.contains('open'))) { closeAgentMenu(); return; }
       if (gearMenu.classList.contains('open')) { closeGearMenu(); return; }
       if (chatHistMenu.classList.contains('open')) { closeChatHistory(); return; }
+      if (openPopId != null && popMenu.classList.contains('open')) { closePopMenu(); return; }
       if (cpanel.classList.contains('open')) { cancelDismiss(); cpanel.classList.remove('open'); }
       else if (drawerOpen) closeDrawer();
       else if (note.style.display === 'block') closeNote();
+      // Step back through the card's modes before fully dismissing it.
+      else if (openPopId != null && popMode === 'delete-confirm') cancelDeleteConfirm();
+      else if (openPopId != null && popMode === 'edit') cancelCardEdit();
       else if (openPopId != null) closePopover();
       else if (picking) setPicking(false);
       return;
