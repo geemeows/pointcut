@@ -2567,6 +2567,12 @@ export function mount() {
     const noteText = addNoteText.value.trim();
     selectTab('chat');
     if (!drawerOpen) openDrawer();
+    // Start a fresh chat thread so the comments stream into a clean transcript —
+    // the same clean slate the floating panel gives, never stacking onto an
+    // earlier run. Prior threads stay reachable from the history menu. (Done
+    // before agentRunning flips, so switchChat's mid-stream guard passes.)
+    chat.newChat();
+    switchChat();
     agentRunning = true;
     agentErrored = false;
     closeTextRow();
