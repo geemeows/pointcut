@@ -1401,7 +1401,6 @@ export function mount() {
     const t = localStorage.getItem(TAB_KEY);
     if (t === 'comments' || t === 'chat') activeTab = t;
   } catch (_) {}
-  let agentSessionId = null; // captured from stream-json init; enables conversation resume
   let agentStartAt = 0; // run start timestamp, for the "Brewed for …" elapsed time
   let openTextMsg = null; // the .msg node currently accumulating streamed prose deltas
   let openTextBuf = ''; // its accumulated text so far
@@ -2190,16 +2189,16 @@ export function mount() {
     cLog('tool', ic, `${escHtml(name)} ${detail}`.trim());
   };
 
-  // Render one normalized Action (from agent-run.mjs) into the active surface.
+  // Render one normalized Action (from agent-run.mjs) into the floating panel.
+  // The panel is wiped on each send (see runAgent), so it always shows just the
+  // current comment's run — no transcript persistence, no cross-send resume.
   const renderAction = (a) => {
     if (a.kind === 'text') {
       streamText(a.text, a.delta);
       return;
     }
     closeTextRow(); // any non-text event ends the current streamed line
-    if (a.kind === 'session') {
-      if (a.id) agentSessionId = a.id; // enables follow-up turns
-    } else if (a.kind === 'tool') {
+    if (a.kind === 'tool') {
       renderToolRow(a);
     } else if (a.kind === 'result') {
       if (!a.ok) {
@@ -2240,6 +2239,12 @@ export function mount() {
     // Single-comment / whole-queue sends from the bar + bubbles stream into the
     // floating panel. (The Comments tab's "Send to agent" routes to Chat instead.)
     surface = { log: cpanelLog, status: panelStatus };
+    // Each send is its own one-shot: wipe the feed so the bubble shows only this
+    // comment's run, never a stale stack from an earlier comment (which a later
+    // visit to the tool would otherwise resurface).
+    cpanelLog.innerHTML = '';
+    panelStatus.classList.remove('show', 'running', 'err');
+    closeTextRow();
     // Collapse the toolbar to its brand circle and float the feed above it: the
     // puck pulses (startThinking adds .thinking) while the agent works and the
     // chat reads as hovering over the circle, matching the send-to-agent intent.
@@ -2255,12 +2260,12 @@ export function mount() {
     if (text) parts.push('## Additional instruction\n' + text);
     const markdown = parts.join('\n\n');
 
-    // Echo the user's turn into the transcript.
+    // Echo the user's turn into the (freshly cleared) transcript.
     const cn = anns.length ? `${anns.length} comment${anns.length > 1 ? 's' : ''}` : '';
     cLog('you', '›', escHtml([cn, text && `“${text}”`].filter(Boolean).join(' + ')));
 
     streamAgentRun(
-      { agent: selectedAgent, model: selectedModel, markdown, resume: agentSessionId },
+      { agent: selectedAgent, model: selectedModel, markdown, resume: null },
       {
         onAction: renderAction,
         onBridgeError: (m) => { agentErrored = true; cLog('err', '⚠', escHtml(m)); },
@@ -2335,7 +2340,7 @@ export function mount() {
     else if (e.k === 'err') cLog('err', '⚠', escHtml(e.m));
   };
   // Like renderAction, but for the chat surface: capture the session into the
-  // chat model (not the comments agentSessionId), persist each rendered entry,
+  // chat model (the chat thread persists; the floating panel does not),
   // and never removeSent() — chat has no queue subset.
   const renderChatAction = (a) => {
     if (a.kind === 'text') {
@@ -3428,8 +3433,7 @@ export function mount() {
     selectedAgent = agent;
     selectedModel = model;
     pickers.forEach((p) => { p.label.textContent = label; });
-    agentSessionId = null; // a resume id is per-agent/model — don't carry it across a switch
-    chat.setSession(null); // ditto for the chat thread — its resume id is stale under a new agent
+    chat.setSession(null); // the chat thread's resume id is stale under a new agent
     renderAllMenus();
     renderGearModels(label);
     refreshCount();
